@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // hooks/useWebPush.ts
 'use client';
 
@@ -10,11 +11,14 @@ const API = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/admin`;
 
 export type PushPermission = 'default' | 'granted' | 'denied';
 
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
+function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64  = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
   const raw     = atob(base64);
-  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+  const buf     = new ArrayBuffer(raw.length);
+  const view    = new Uint8Array(buf);
+  for (let i = 0; i < raw.length; i++) view[i] = raw.charCodeAt(i);
+  return view;
 }
 
 export function useWebPush() {
@@ -111,9 +115,10 @@ export function useWebPush() {
   }, [supported, accessToken, saveSubscriptionToBackend]);
 
   /* ── Fetch VAPID public key from backend ── */
-  const getVapidKey = useCallback(async (_token: string): Promise<Uint8Array | null> => {
+    /* ── Fetch VAPID public key from backend ── */
+  const getVapidKey = useCallback(async (_token: string): Promise<Uint8Array<ArrayBuffer> | null> => {
     try {
-      // vapid-key is a public route (no auth required) — exposed before the auth middleware
+      // vapid-key is a public route — no auth required
       const res  = await fetch(`${API}/push/vapid-key`);
       const json = await res.json();
       const key  = json?.data?.publicKey ?? json?.publicKey ?? null;

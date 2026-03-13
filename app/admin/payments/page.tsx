@@ -1,6 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // app/admin/payments/page.tsx
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, JSX } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import AdminShell from '@/app/admin/components/AdminShell';
 import { useAdminAuth } from '@/app/admin/context/AdminAuthContext';
@@ -15,7 +16,7 @@ const PAYMENT_STATUS_STYLE: Record<string, { bg: string; text: string; border: s
 };
 
 const STATUS_OPTIONS = ['pending', 'paid', 'failed', 'refunded'] as const;
-type PaymentStatus = typeof STATUS_OPTIONS[number];
+// type PaymentStatus = typeof STATUS_OPTIONS[number];
 
 const STATUS_ICONS: Record<string, JSX.Element> = {
   pending: (

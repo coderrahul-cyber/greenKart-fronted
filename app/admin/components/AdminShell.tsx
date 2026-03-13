@@ -190,7 +190,7 @@ function TopBar({
 /* ── Main Shell ── */
 export default function AdminShell({ title, children }: { title: string; children: React.ReactNode }) {
   const { accessToken } = useAdminAuth();
-  const { notifications, unreadCount, connected, markRead, markAllRead, dismiss } = useAdminSSE(accessToken);
+  const { notifications, unreadCount, connected, markRead, dismiss } = useAdminSSE();
   const [showNotif, setShowNotif] = useState(false);
 
   const confirmOrder = async (mongoId: string, notifId: string) => {
