@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+:root {
+  --background: #F0EDE5;
+  --background-grad:linear-gradient(180deg, #081a16 0%, #0a2420 60%, #0c2d28 100%) ;
+  --color-background-gradient: var(--background-grad);
+  --textcolor : #004643;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-background-gradient: var(--color-background-gradient);
+  --color-text: var(--textcolor);
+  --color-foreground: var(--foreground);
+  --font-roboto: var(--font-roboto);
+  --font-poppins: var(--font-poppins);
+  --font-playfair-display: var(--font-playfair-display);
+}
+
+@media (prefers-color-scheme: dark) {
+ 
+}
+
+body {
+  font-family: Arial, Helvetica, sans-serif;
+  background: "linear-gradient(180deg, #081a16 0%, #0a2420 60%, #0c2d28 100%)";
+}
