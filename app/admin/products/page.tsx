@@ -36,7 +36,7 @@ function ProductForm({ initial, token, onSave, onClose }: {
     e.preventDefault(); setError('');
     setSaving(true);
     try {
-      const url = isEdit ? `${API}/products/` : `${API}/products`;
+      const url = isEdit ? `${API}/products/${initial._id}` : `${API}/products`;
       const method = isEdit ? 'PATCH' : 'POST';
       const res = await fetch(url, {
         method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
