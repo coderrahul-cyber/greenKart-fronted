@@ -34,8 +34,8 @@ interface AuthContextType {
   accessToken:     string | null;
   isLoading:       boolean;
   isAuthenticated: boolean;
-  login:    (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  register: (data: RegisterData)              => Promise<{ success: boolean; error?: string }>;
+  login:    (email: string, password: string, rememberMe?: boolean) => Promise<{ success: boolean; error?: string }>;
+  register: (data: RegisterData, rememberMe?: boolean)              => Promise<{ success: boolean; error?: string }>;
   logout:   () => void;
 }
 
@@ -48,15 +48,18 @@ interface RegisterData {
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
-const API = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1`;
+const API        = 'http://localhost:4000/api/v1';
 const REFRESH_MS = 13 * 60 * 1000; // refresh every 13 min (token expires at 15)
 
 /* ─────────────────────────────────────────
    Cookie helpers
 ───────────────────────────────────────── */
 function setCookie(name: string, value: string, days = 7) {
-  const expires = new Date(Date.now() + days * 864e5).toUTCString();
-  document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
+  // days=0 → session cookie (no expires — browser deletes on close)
+  const expiresPart = days > 0
+    ? `; expires=${new Date(Date.now() + days * 864e5).toUTCString()}`
+    : '';
+  document.cookie = `${name}=${encodeURIComponent(value)}${expiresPart}; path=/; SameSite=Lax`;
 }
 function getCookie(name: string): string | null {
   return document.cookie.split('; ').reduce<string | null>((acc, part) => {
@@ -100,6 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     deleteCookie('accessToken');
     deleteCookie('refreshToken');
     deleteCookie('user');
+    if (typeof localStorage !== 'undefined') localStorage.removeItem('gk_remember');
     if (refreshTimer.current) clearInterval(refreshTimer.current);
   }, []);
 
@@ -118,13 +122,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  /* ── Persist tokens + user to cookies ── */
-  const persist = useCallback((at: string, rt: string, userData: User) => {
+  /* ── Persist tokens + user to cookies ──────────────────────────
+     rememberMe=true  → 30-day cookies (survive browser close)
+     rememberMe=false → session cookies (expire when tab closes,
+                        achieved by omitting expires — days=0)
+  ────────────────────────────────────────────────────────────── */
+  const persist = useCallback((at: string, rt: string, userData: User, rememberMe = false) => {
     setAccessToken(at);
     setUser(userData);
-    setCookie('accessToken',  at,                      1);
-    setCookie('refreshToken', rt,                      30);
-    setCookie('user',         JSON.stringify(userData), 1);
+    const atDays  = rememberMe ? 30 : 0;   // 0 = session cookie
+    const rtDays  = rememberMe ? 30 : 0;
+    const uDays   = rememberMe ? 30 : 0;
+    setCookie('accessToken',  at,                      atDays);
+    setCookie('refreshToken', rt,                      rtDays);
+    setCookie('user',         JSON.stringify(userData), uDays);
+    // Store the remember preference so silentRefresh can re-persist with the same TTL
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('gk_remember', rememberMe ? '1' : '0');
+    }
   }, []);
 
   /* ── Silent token refresh ─────────────────────────────────────────
@@ -151,7 +166,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!newAt) { clearAll(); return null; }
 
       setAccessToken(newAt);
-      setCookie('accessToken', newAt, 1);
+      // Re-persist with the same TTL the user originally chose
+      const wasRemembered = typeof localStorage !== 'undefined' && localStorage.getItem('gk_remember') === '1';
+      setCookie('accessToken', newAt, wasRemembered ? 30 : 0);
       return newAt;
     } catch {
       // Network error — don't log out, keep existing token and retry next cycle
@@ -210,7 +227,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchMe, silentRefresh, startRefreshCycle, clearAll]);
 
   /* ── Login ── */
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string, rememberMe = false) => {
     try {
       const res  = await fetch(`${API}/users/login`, {
         method:  'POST',
@@ -227,7 +244,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!fullUser)
         return { success: false, error: 'Could not load your profile. Please try again.' };
 
-      persist(at, rt, fullUser);
+      persist(at, rt, fullUser, rememberMe);
       startRefreshCycle(); // start refresh cycle immediately on login
       return { success: true };
     } catch {
@@ -236,7 +253,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   /* ── Register ── */
-  const register = async (data: RegisterData) => {
+  const register = async (data: RegisterData, rememberMe = false) => {
     try {
       const res  = await fetch(`${API}/users/register`, {
         method:  'POST',
@@ -253,7 +270,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!fullUser)
         return { success: false, error: 'Could not load your profile. Please try again.' };
 
-      persist(at, rt, fullUser);
+      persist(at, rt, fullUser, rememberMe);
       startRefreshCycle(); // start refresh cycle on register too
       return { success: true };
     } catch {

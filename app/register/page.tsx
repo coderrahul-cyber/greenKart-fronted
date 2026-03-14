@@ -18,6 +18,28 @@ const EyeIcon = ({ open }: { open: boolean }) => open ? (
   </svg>
 );
 
+function Checkbox({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+  return (
+    <button type="button" onClick={() => onChange(!checked)} className="flex items-center gap-2.5">
+      <div
+        className="flex items-center justify-center shrink-0 rounded-md transition-all duration-200"
+        style={{
+          width: 18, height: 18,
+          background: checked ? 'rgba(74,222,128,0.15)' : 'rgba(255,255,255,0.05)',
+          border: `1.5px solid ${checked ? 'rgba(74,222,128,0.6)' : 'rgba(255,255,255,0.15)'}`,
+        }}
+      >
+        {checked && (
+          <motion.svg initial={{ scale: 0 }} animate={{ scale: 1 }} width="10" height="10" viewBox="0 0 12 12" fill="none">
+            <polyline points="2 6 5 9 10 3" stroke="#4ade80" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+          </motion.svg>
+        )}
+      </div>
+      <span className="text-xs font-roboto select-none" style={{ color: 'rgba(255,255,255,0.45)' }}>{label}</span>
+    </button>
+  );
+}
+
 /* ── Full-screen error modal for backend errors ── */
 function ErrorModal({ message, onClose }: { message: string; onClose: () => void }) {
   // Classify the error to show the right icon + colour
@@ -209,6 +231,7 @@ export default function RegisterPage() {
   const [errorModal, setErrorModal] = useState(''); // backend errors shown as modal
 
   // Geolocation state
+  const [saveLogin,   setSaveLogin]   = useState(false);
   const [geoLoading,  setGeoLoading]  = useState(false);
   const [geoError,    setGeoError]    = useState('');
   const [geoSuccess,  setGeoSuccess]  = useState(false);
@@ -254,9 +277,14 @@ export default function RegisterPage() {
       phoneNumber: phone.replace(/\D/g, ''),
       password,
       address: { line1, line2, city, pincode },
-    });
+    }, saveLogin);
     setLoading(false);
     if (res.success) {
+      // Save credentials to localStorage so login page can restore them
+      if (saveLogin) {
+        localStorage.setItem('gk_saved_email', email);
+        localStorage.setItem('gk_saved_pw',    password);
+      }
       router.push('/');
       return;
     }
@@ -669,6 +697,15 @@ export default function RegisterPage() {
                         <span className="text-xs font-roboto" style={{ color: pw.color }}>{pw.label}</span>
                       </div>
                     )}
+                  </div>
+
+                  {/* Save login details checkbox */}
+                  <div className="mt-1">
+                    <Checkbox
+                      checked={saveLogin}
+                      onChange={setSaveLogin}
+                      label="Save my login details for next time"
+                    />
                   </div>
                 </motion.div>
               )}

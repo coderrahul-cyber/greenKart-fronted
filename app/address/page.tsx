@@ -433,8 +433,9 @@ export default function AddressPage() {
   const handleUpdate = async (id: string, fields: FormFields) => {
     setSaving(true); setFormError('');
     try {
+      // console.log('Updating address', id, fields);
       const res  = await fetch(`${API}/users/me/addresses/${id}`, {
-        method:  'PUT',
+        method:  'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
         body:    JSON.stringify(fields),
       });
