@@ -1,3 +1,5 @@
+/* eslint-disable react-hooks/set-state-in-effect */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // app/context/AuthContext.tsx
 'use client';
 
@@ -48,7 +50,7 @@ interface RegisterData {
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
-const API        = 'http://localhost:4000/api/v1';
+const API = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1`;
 const REFRESH_MS = 13 * 60 * 1000; // refresh every 13 min (token expires at 15)
 
 /* ─────────────────────────────────────────
