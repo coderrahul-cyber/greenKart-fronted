@@ -9,7 +9,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useCart } from '@/context/CartContext';
 import { OutOfStockItem } from '@/hooks/usePlaceOrder';
 
-const API = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1`;
+const API = 'http://localhost:4000/api/v1';
 
 /* ─────────────────────────────────────────
    Icons
@@ -174,9 +174,19 @@ export default function CheckoutPage() {
   const [razorpayDown,  setRazorpayDown]  = useState(false);
   const [outOfStock,    setOutOfStock]    = useState<OutOfStockItem[]>([]);
 
-  const subtotal   = useMemo(() => cart.reduce((t, i) => t + i.price * i.quantity, 0), [cart]);
-  const shipping   = subtotal >= 500 ? 0 : 20;
-  const tax        = Math.round(subtotal * 0.18);
+  const subtotal = useMemo(() => cart.reduce((t, i) => t + i.price * i.quantity, 0), [cart]);
+
+  // Shipping charge from env — must match NEXT_PUBLIC_SHIPPING_CHARGE=20 in .env
+  const SHIPPING_CHARGE = parseInt(process.env.NEXT_PUBLIC_SHIPPING_CHARGE ?? '0', 10);
+  const shipping = subtotal > 0 ? SHIPPING_CHARGE : 0;
+
+  // Tax: backend computes taxAmount = Math.round(itemsTotal * 0.18) and ADDS it to total.
+  // Frontend must use the same formula so the total shown matches what backend charges.
+  const tax   = Math.round(subtotal * 0.18);
+
+  // Total formula mirrors backend exactly:
+  // totalAmount = itemsTotal + shippingCharge + taxAmount - discount
+  // (discount is 0 at checkout — coupons not implemented yet)
   const total      = subtotal + shipping + tax;
   const totalItems = cart.reduce((s, i) => s + i.quantity, 0);
 
@@ -227,6 +237,7 @@ export default function CheckoutPage() {
       const json = await res.json();
 
       if (res.ok && json.success !== false) {
+        // Backend already cleared the cart — sync frontend
         clearCart();
         const orderId       = json?.data?.order?._id ?? json?.data?._id ?? '';
         const lowStockWarn  = json?.data?.warnings ?? json?.warnings ?? [];
@@ -262,14 +273,19 @@ export default function CheckoutPage() {
 
   /* ── Initiate Razorpay payment ──────────────────────────────────
      Flow:
-     0.  Load Razorpay SDK.
-     0b. Pre-flight ping — confirm Razorpay API is reachable BEFORE
-         creating any order. If unreachable, throw immediately so
-         NO order is ever created and the cart is untouched.
-     1.  POST /orders { paymentMethod: "razorpay" } → orderId + paymentId
-     2.  POST /payments/razorpay/create-order { paymentId } → razorpayOrderId
-     3.  Open Razorpay modal → user pays
-     4.  POST /payments/razorpay/verify → confirmed
+     0. Pre-flight: load Razorpay SDK BEFORE creating any order.
+        If SDK fails to load → Razorpay is unreachable → show banner,
+        nothing was created on the backend, cart is untouched.
+     1. POST /orders { paymentMethod: "razorpay" } → orderId + paymentId
+     2. POST /payments/razorpay/create-order { paymentId } → razorpayOrderId
+     3. Open Razorpay modal → user pays
+     4. POST /payments/razorpay/verify → confirmed
+
+     Because we load the SDK first, RAZORPAY_UNAVAILABLE at Step 2
+     should be extremely rare. If it still happens (Razorpay goes down
+     between the SDK load and the API call) we cancel the order — but
+     the common case (Razorpay simply down) is caught at Step 0 and
+     never creates an order at all.
   ──────────────────────────────────────────────────────────────── */
   const placeOnline = async () => {
     if (!address) { setError('No delivery address found. Please add one in your profile.'); return; }
@@ -291,6 +307,8 @@ export default function CheckoutPage() {
     try {
 
       // ── Step 0: Load Razorpay SDK first — before touching the backend ──
+      // If Razorpay is down / unreachable, the script tag will fail to load.
+      // We catch this here so NO order is ever created in this case.
       if (!(window as any).Razorpay) {
         await new Promise<void>((resolve, reject) => {
           const s   = document.createElement('script');
@@ -299,30 +317,7 @@ export default function CheckoutPage() {
           s.onerror = () => reject(new Error('RAZORPAY_SDK_LOAD_FAILED'));
           document.body.appendChild(s);
         });
-      }
-
-      // ── Step 0b: Pre-flight ping — verify Razorpay API is reachable
-      //             BEFORE creating any order on our backend.
-      //             A 401 means Razorpay is UP (just rejecting our unauthed ping).
-      //             A network error / timeout / 5xx means Razorpay is truly down.
-      //             We throw RAZORPAY_SDK_LOAD_FAILED so the catch block below
-      //             sets razorpayDown=true without ever touching the backend.
-      try {
-        const ping = await fetch('https://api.razorpay.com/v1/payments', {
-          method: 'HEAD',
-          signal: AbortSignal.timeout(5000),
-        });
-        if (ping.status >= 500) throw new Error('RAZORPAY_SDK_LOAD_FAILED');
-      } catch (pingErr: any) {
-        // Only treat as down for network/timeout errors — 4xx means reachable
-        if (
-          pingErr.name    === 'TimeoutError'               ||
-          pingErr.name    === 'TypeError'                  || // network failure
-          pingErr.message === 'RAZORPAY_SDK_LOAD_FAILED'
-        ) {
-          throw new Error('RAZORPAY_SDK_LOAD_FAILED');
-        }
-        // 4xx from Razorpay = reachable, safe to continue
+        // SDK loaded — Razorpay is reachable, safe to proceed
       }
 
       // ── Step 1: Place order with paymentMethod "razorpay" ──────────
@@ -386,6 +381,8 @@ export default function CheckoutPage() {
       const razorpayOrderId = rzpOrderJson?.data?.razorpayOrderId ?? rzpOrderJson?.data?.id ?? rzpOrderJson?.id;
       const keyId           = rzpOrderJson?.data?.keyId ?? process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
 
+      // SDK already loaded in Step 0 — no need to load again
+
       const options = {
         key:         keyId,
         amount:      total * 100,
@@ -434,8 +431,7 @@ export default function CheckoutPage() {
 
     } catch (err: any) {
       if (err?.message === 'RAZORPAY_SDK_LOAD_FAILED') {
-        // SDK failed to load or pre-flight ping failed —
-        // cancelPendingOrder is a no-op here since createdOrderId is still null
+        // SDK failed to load — cancel the order we already created
         await cancelPendingOrder();
         setRazorpayDown(true);
       } else {
@@ -571,16 +567,23 @@ export default function CheckoutPage() {
           ))}
           {/* Bill */}
           <div className="px-4 py-4 flex flex-col gap-2" style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}>
-            {[
-              { l: 'Items total',   v: `₹${subtotal.toLocaleString('en-IN')}` },
-              { l: 'Shipping',      v: shipping === 0 ? 'Free 🎉' : `₹${shipping}` },
-              { l: 'GST (18%)',     v: `₹${tax.toLocaleString('en-IN')}` },
-            ].map(({ l, v }) => (
-              <div key={l} className="flex justify-between">
-                <span className="text-xs font-roboto" style={{ color: "rgba(255,255,255,0.35)" }}>{l}</span>
-                <span className="text-xs font-roboto" style={{ color: shipping === 0 && l === 'Shipping' ? '#4ade80' : "rgba(255,255,255,0.5)" }}>{v}</span>
-              </div>
-            ))}
+            {/* Items total */}
+            <div className="flex justify-between">
+              <span className="text-xs font-roboto" style={{ color: "rgba(255,255,255,0.35)" }}>Items total</span>
+              <span className="text-xs font-roboto" style={{ color: "rgba(255,255,255,0.5)" }}>₹{subtotal.toLocaleString('en-IN')}</span>
+            </div>
+            {/* Shipping */}
+            <div className="flex justify-between">
+              <span className="text-xs font-roboto" style={{ color: "rgba(255,255,255,0.35)" }}>Shipping</span>
+              <span className="text-xs font-roboto" style={{ color: shipping === 0 ? '#4ade80' : "rgba(255,255,255,0.5)" }}>
+                {shipping === 0 ? 'Free 🎉' : `₹${shipping}`}
+              </span>
+            </div>
+            {/* GST — added on top by backend, must be shown as additive */}
+            <div className="flex justify-between">
+              <span className="text-xs font-roboto" style={{ color: "rgba(255,255,255,0.35)" }}>GST (18%)</span>
+              <span className="text-xs font-roboto" style={{ color: "rgba(255,255,255,0.5)" }}>₹{tax.toLocaleString('en-IN')}</span>
+            </div>
             <div className="flex justify-between pt-2 mt-1" style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}>
               <span className="text-sm font-semibold font-poppins" style={{ color: "rgba(255,255,255,0.7)" }}>Total</span>
               <span className="text-lg font-bold font-poppins"

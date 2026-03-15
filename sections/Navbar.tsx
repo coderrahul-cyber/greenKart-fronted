@@ -16,7 +16,7 @@ const MENU_LINKS = [
 ];
 
 const Navbar = () => {
-  const {logout} = useAuth();
+  const {logout , isAuthenticated} = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [scrolled,   setScrolled]   = useState(false);
 
@@ -267,7 +267,8 @@ const Navbar = () => {
               />
 
               {/* Log out */}
-              <motion.button 
+              {isAuthenticated && 
+ <motion.button 
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1,  y: 0  }}
                 transition={{ delay: 0.7, duration: 0.35 }}
@@ -298,6 +299,10 @@ const Navbar = () => {
                 </svg>
                 Log Out
               </motion.button>
+
+
+              }
+             
             </div>
 
             {/* Footer */}

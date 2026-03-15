@@ -9,7 +9,7 @@
 import { useState, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 
-const API = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1`;
+const API = "http://localhost:4000/api/v1";
 
 /* ─────────────────────────────────────────
    Types (mirror backend order shape)
@@ -56,16 +56,18 @@ function mapOrder(order: any, user: any): ReceiptData {
   }));
 
   // ── Totals — exact field names from Order schema ───────────────────────────
-  const subtotal    = order.itemsTotal  ?? 0;
-  const discount    = order.discount    ?? 0;
-  const tax         = order.taxAmount   ?? 0;  // displayed as info only — not added to total
+  // Backend formula: totalAmount = itemsTotal + shippingCharge + taxAmount - discount
+  const subtotal = order.itemsTotal ?? 0;
+  const tax      = order.taxAmount  ?? 0;  // 18% of itemsTotal, added by backend
+  const discount = order.discount   ?? 0;
 
-  // Shipping: prefer value stored on order, fall back to env var
-  const envShipping = Number(process.env.NEXT_PUBLIC_SHIPPING_CHARGE ?? 0);
-  const shipping    = order.shippingCharge ?? envShipping;
+  // Shipping: prefer stored value, fall back to env var
+  const envShipping = parseInt(process.env.NEXT_PUBLIC_SHIPPING_CHARGE ?? '0', 10);
+  const shipping    = order.shippingCharge != null ? order.shippingCharge : envShipping;
 
-  // Total = subtotal + shipping − discount  (GST not included until tax is implemented)
-  const total = order.totalAmount ?? (subtotal + shipping - discount);
+  // Use totalAmount from DB as the authoritative figure.
+  // Recalculate only if it's missing (should never happen for saved orders).
+  const total = order.totalAmount ?? (subtotal + shipping + tax - discount);
 
   // ── Payment — populated via .populate("payment") ──────────────────────────
   // payment.method values from Payment model: "cod" | "razorpay"
@@ -325,11 +327,14 @@ async function drawReceipt(data: ReceiptData): Promise<void> {
   const rowGap    = 7;
 
   // Subtotal / Shipping / Discount rows — GST not included in total
-  const summaryRows: { label: string; value: string }[] = [
+  const summaryRows: { label: string; value: string; dim?: boolean }[] = [
     { label: "Subtotal", value: inr(data.subtotal) },
     { label: "Shipping", value: data.shipping === 0 ? "Free" : inr(data.shipping) },
+    { label: "GST (18%)", value: inr(data.tax) },
   ];
-  if (data.discount > 0) summaryRows.push({ label: "Discount", value: `-${inr(data.discount)}` });
+  if (data.discount > 0) {
+    summaryRows.push({ label: "Discount", value: `-${inr(data.discount)}` });
+  }
 
   summaryRows.forEach(({ label, value }) => {
     color(...GREY_M); font("normal", 8);
@@ -339,14 +344,6 @@ async function drawReceipt(data: ReceiptData): Promise<void> {
     text(value, valueX, y, { align: "right" });
     y += rowGap;
   });
-
-  // GST — info only row (not included in total yet)
-  if (data.tax > 0) {
-    color(...GREY_L); font("italic", 7);
-    text("GST (18%)", labelX, y);
-    text(`${inr(data.tax)} (incl.)`, valueX, y, { align: "right" });
-    y += rowGap;
-  }
 
   // Total row with highlight
   y += 2;

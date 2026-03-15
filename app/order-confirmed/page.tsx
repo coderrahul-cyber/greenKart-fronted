@@ -8,7 +8,7 @@ import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useReceiptDownload } from '@/hooks/useReceiptDownload';
 
-const API = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1`;
+const API = 'http://localhost:4000/api/v1';
 
 /* ─────────────────────────────────────────
    Mini order-summary card shown on page
@@ -18,12 +18,15 @@ function OrderSummaryCard({ order }: { order: any }) {
   const items    = order.items ?? [];
   const addr     = order.shippingAddress ?? {};
   const addrStr  = [addr.line1, addr.line2, addr.city, addr.pincode].filter(Boolean).join(', ');
-  const subtotal    = order.itemsTotal  ?? 0;
-  const discount    = order.discount    ?? 0;
-  const tax         = order.taxAmount   ?? 0;  // shown for info only
-  const envShipping = Number(process.env.NEXT_PUBLIC_SHIPPING_CHARGE ?? 0);
-  const shipping    =  envShipping;
-  const total       = order.totalAmount ?? (subtotal + shipping - discount);
+  // All values read directly from backend — these are the authoritative stored figures.
+  // Backend formula: totalAmount = itemsTotal + shippingCharge + taxAmount - discount
+  const subtotal = order.itemsTotal    ?? 0;
+  const tax      = order.taxAmount     ?? 0;   // 18% of itemsTotal, added by backend
+  const discount = order.discount      ?? 0;
+  const envShip  = parseInt(process.env.NEXT_PUBLIC_SHIPPING_CHARGE ?? '0', 10);
+  const shipping = order.shippingCharge != null ? order.shippingCharge : envShip;
+  // Prefer totalAmount from DB; recalculate only if missing
+  const total    = order.totalAmount   ?? (subtotal + shipping + tax - discount);
 
   return (
     <motion.div
@@ -72,10 +75,10 @@ function OrderSummaryCard({ order }: { order: any }) {
       <div className="px-4 py-3 flex flex-col gap-1.5"
         style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
         {[
-          { l: 'Subtotal', v: `₹${subtotal.toLocaleString('en-IN')}` },
-          { l: 'Shipping', v: shipping === 0 ? 'Free' : `₹${shipping.toLocaleString('en-IN')}` },
+          { l: 'Subtotal',  v: `₹${subtotal.toLocaleString('en-IN')}` },
+          { l: 'Shipping',  v: shipping === 0 ? 'Free 🎉' : `₹${shipping.toLocaleString('en-IN')}` },
+          { l: 'GST (18%)', v: `₹${tax.toLocaleString('en-IN')}` },
           ...(discount > 0 ? [{ l: 'Discount', v: `-₹${discount.toLocaleString('en-IN')}` }] : []),
-          ...(tax > 0       ? [{ l: 'GST (18%) incl.', v: `₹${tax.toLocaleString('en-IN')}` }] : []),
         ].map(({ l, v }) => (
           <div key={l} className="flex justify-between">
             <span className="text-[11px] font-roboto" style={{ color: "rgba(255,255,255,0.3)" }}>{l}</span>
