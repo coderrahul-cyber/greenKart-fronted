@@ -134,7 +134,7 @@ const LogoutModal = ({ onConfirm, onCancel }: { onConfirm: () => void; onCancel:
         </div>
         <div>
           <h3 className="text-xl font-semibold text-white font-playfair">Sign out?</h3>
-          <p className="text-sm text-white/40 font-roboto mt-1">You'll need to log back in to access your cart and orders.</p>
+          <p className="text-sm text-white/40 font-roboto mt-1">You&apos;ll need to log back in to access your cart and orders.</p>
         </div>
       </div>
       <div className="flex gap-3">
@@ -182,9 +182,9 @@ export default function ProfilePage() {
     show: { transition: { staggerChildren: 0.07 } },
   };
   const item: import('motion/react').Variants = {
-    hidden: { opacity: 0, y: 18 },
-    show:   { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] as number[] } },
-  };
+  hidden: { opacity: 0, y: 18 },
+  show:   { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] as [number, number, number, number] } },
+};
 
   /* ── Loading skeleton ── */
   if (isLoading) {

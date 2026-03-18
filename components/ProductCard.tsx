@@ -236,7 +236,7 @@ export default function ProductCard({
                   onClick={handleIncrease}
                   whileTap={{ scale: 0.88 }}
                   className="qty-btn w-9 h-9 rounded-xl flex items-center justify-center font-bold text-lg transition-colors"
-                  style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.1)" }}
+                  // style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.1)" }}
                   disabled={atLimit}
                   style={{ background: "rgba(255,255,255,0.1)", color: atLimit ? "rgba(255,255,255,0.2)" : "#fff", border: "1px solid rgba(255,255,255,0.1)", cursor: atLimit ? "not-allowed" : "pointer" }}
                   aria-label="Increase"

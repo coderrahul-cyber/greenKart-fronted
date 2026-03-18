@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // app/checkout/page.tsx
 'use client';
 
@@ -392,7 +393,7 @@ export default function CheckoutPage() {
         order_id:    razorpayOrderId,
         prefill: {
           name:    user?.name        ?? '',
-          email:   user?.email       ?? '',
+          // email:   user?.email       ?? '',
           contact: user?.phoneNumber ?? '',
         },
         theme: { color: '#4ade80' },
