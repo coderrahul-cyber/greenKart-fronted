@@ -1,5 +1,3 @@
-/* eslint-disable react-hooks/set-state-in-effect */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 // app/context/AuthContext.tsx
 'use client';
 
@@ -22,13 +20,12 @@ export interface Address {
 }
 
 export interface User {
-  id:              string;
-  name:            string;
-  email:           string;
-  phoneNumber:     string;
-  addresses:       Address[];
-  isEmailVerified: boolean;
-  cart:            string;
+  id:          string;
+  name:        string;
+  phoneNumber: string;
+  addresses:   Address[];
+  isPhoneVerified: boolean;
+  cart:        string;
 }
 
 interface AuthContextType {
@@ -36,21 +33,21 @@ interface AuthContextType {
   accessToken:     string | null;
   isLoading:       boolean;
   isAuthenticated: boolean;
-  login:    (email: string, password: string, rememberMe?: boolean) => Promise<{ success: boolean; error?: string }>;
-  register: (data: RegisterData, rememberMe?: boolean)              => Promise<{ success: boolean; error?: string }>;
+  login:    (phoneNumber: string, password: string, rememberMe?: boolean) => Promise<{ success: boolean; error?: string }>;
+  register: (data: RegisterData, rememberMe?: boolean)                    => Promise<{ success: boolean; error?: string }>;
   logout:   () => void;
 }
 
 interface RegisterData {
   name:        string;
-  email:       string;
   phoneNumber: string;
   password:    string;
+  isPhoneVerified?: boolean,
   address?: { line1: string; line2?: string; city: string; pincode: string };
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
-const API = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1`;
+const API        = 'http://localhost:4000/api/v1';
 const REFRESH_MS = 13 * 60 * 1000; // refresh every 13 min (token expires at 15)
 
 /* ─────────────────────────────────────────
@@ -78,12 +75,11 @@ function deleteCookie(name: string) {
 ───────────────────────────────────────── */
 function mapUser(u: any): User {
   return {
-    id:              u._id  ?? u.id  ?? '',
-    name:            u.name          ?? '',
-    email:           u.email         ?? '',
-    phoneNumber:     u.phoneNumber   ?? '',
-    isEmailVerified: u.isEmailVerified ?? false,
-    cart:            u.cart          ?? '',
+    id:              u._id         ?? u.id ?? '',
+    name:            u.name        ?? '',
+    phoneNumber:     u.phoneNumber ?? '',
+    isPhoneVerified: u.isPhoneVerified ?? u.isPhoneVerified ?? false,
+    cart:            u.cart        ?? '',
     addresses:       Array.isArray(u.addresses) ? u.addresses : [],
   };
 }
@@ -192,12 +188,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /* ── Rehydrate from cookies on mount ─────────────────────────────
-     1. Read stored accessToken
-     2. Try /users/me — if it works the token is still valid
-     3. If /users/me fails (token expired), try a silent refresh once
-     4. If refresh also fails — clear everything
+     1. If accessToken is already in state (just set by login/register),
+        skip cookie read entirely — already authenticated, set isLoading=false.
+     2. Otherwise read stored cookie and validate with /users/me.
+     3. If /users/me fails (token expired), try a silent refresh once.
+     4. If refresh also fails — clear everything.
   ────────────────────────────────────────────────────────────────── */
   useEffect(() => {
+    // Already authenticated (e.g. just registered) — no need to re-read cookie
+    if (accessToken) { setIsLoading(false); return; }
+
     const token = getCookie('accessToken');
     if (!token) { setIsLoading(false); return; }
 
@@ -229,12 +229,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchMe, silentRefresh, startRefreshCycle, clearAll]);
 
   /* ── Login ── */
-  const login = async (email: string, password: string, rememberMe = false) => {
+  const login = async (phoneNumber: string, password: string, rememberMe = false) => {
     try {
       const res  = await fetch(`${API}/users/login`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ email, password }),
+        body:    JSON.stringify({ phoneNumber, password }),
       });
       const json = await res.json();
       if (!res.ok || !json.success)
@@ -247,7 +247,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: false, error: 'Could not load your profile. Please try again.' };
 
       persist(at, rt, fullUser, rememberMe);
-      startRefreshCycle(); // start refresh cycle immediately on login
+      startRefreshCycle();
       return { success: true };
     } catch {
       return { success: false, error: 'Network error — is the server running?' };
@@ -256,29 +256,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   /* ── Register ── */
   const register = async (data: RegisterData, rememberMe = false) => {
-    try {
-      const res  = await fetch(`${API}/users/register`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(data),
-      });
-      const json = await res.json();
-      if (!res.ok || !json.success)
-        return { success: false, error: json.message || 'Registration failed' };
+  try {
+    const res  = await fetch(`${API}/users/register`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(data),
+    });
+    const json = await res.json();
 
-      const { accessToken: at, refreshToken: rt } = json.data;
+    if (!res.ok || !json.success)
+      return { success: false, error: json.message || 'Registration failed.' };
 
-      const fullUser = await fetchMe(at);
-      if (!fullUser)
-        return { success: false, error: 'Could not load your profile. Please try again.' };
+    const { accessToken: at, refreshToken: rt } = json.data;
 
-      persist(at, rt, fullUser, rememberMe);
-      startRefreshCycle(); // start refresh cycle on register too
-      return { success: true };
-    } catch {
-      return { success: false, error: 'Network error — is the server running?' };
-    }
-  };
+    const fullUser = await fetchMe(at);
+    if (!fullUser)
+      return { success: false, error: 'Account created but could not load profile. Please log in.' };
+
+    // FORCE phone as NOT verified
+    const modifiedUser: User = {
+      ...fullUser,
+      isPhoneVerified: false,
+    };
+
+    persist(at, rt, modifiedUser, rememberMe);
+    startRefreshCycle();
+
+    return { success: true };
+  } catch {
+    return { success: false, error: 'Network error — is the server running?' };
+  }
+};
+
+
+
+
 
   /* ── Logout ── */
   const logout = useCallback(() => {

@@ -26,7 +26,7 @@ export default function ProductCard({
   rating = 4.5,
   stockLimit = 99,
 }: ProductCardProps) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const router = useRouter();
   const { getQuantity, changeQuantity, addToCart, isAtLimit } = useCart();
 
@@ -34,8 +34,10 @@ export default function ProductCard({
   const quantity = getQuantity(productId);
 
   const handleAddToCartClick = () => {
+    // Wait for auth to finish loading — avoids redirecting freshly registered
+    // users whose token is set in state but isAuthenticated hasn't resolved yet
+    if (authLoading) return;
     if (!isAuthenticated) {
-      // Redirect to login, come back to current page after
       router.push(`/login?from=${encodeURIComponent(window.location.pathname)}`);
       return;
     }
@@ -45,6 +47,7 @@ export default function ProductCard({
   const atLimit = isAtLimit(productId);
 
   const handleIncrease = () => {
+    if (authLoading) return;
     if (!isAuthenticated) {
       router.push(`/login?from=${encodeURIComponent(window.location.pathname)}`);
       return;
@@ -60,7 +63,7 @@ export default function ProductCard({
 
   return (
     <div
-      className="group relative w-[70%] md:w-[25vw] select-none"
+      className="group relative w-[70%] md:w-[20vmax] select-none"
       style={{ fontFamily: "'DM Sans', sans-serif" }}
     >
       <style>{`
@@ -167,13 +170,13 @@ export default function ProductCard({
           </div>
 
           {/* Stock indicator */}
-          <div className="flex items-center justify-between -mt-2">
+          <div className="flex items-center justify-between">
             {stockLimit <= 5 && stockLimit > 0 ? (
               <motion.div
                 key={stockLimit}
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="flex items-center gap-1"
+                className="flex items-center gap-1.5"
               >
                 <span className="relative flex h-1.5 w-1.5">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
@@ -233,7 +236,7 @@ export default function ProductCard({
                   onClick={handleIncrease}
                   whileTap={{ scale: 0.88 }}
                   className="qty-btn w-9 h-9 rounded-xl flex items-center justify-center font-bold text-lg transition-colors"
-            
+                  style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.1)" }}
                   disabled={atLimit}
                   style={{ background: "rgba(255,255,255,0.1)", color: atLimit ? "rgba(255,255,255,0.2)" : "#fff", border: "1px solid rgba(255,255,255,0.1)", cursor: atLimit ? "not-allowed" : "pointer" }}
                   aria-label="Increase"

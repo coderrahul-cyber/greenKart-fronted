@@ -2,12 +2,12 @@
 'use client';
 
 import { motion, AnimatePresence } from 'motion/react';
- import type { Variants } from "motion/react";
-
 import Link from 'next/link';
 import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { useRouter } from 'next/navigation';
+// import { useRouter } from 'next/navigation';
+import ProfileEditSheet from '@/components/ProfileEditSheet';
+// import { cookies } from 'next/headers';
 
 /* ── Icons ── */
 const BackIcon = () => (
@@ -134,7 +134,7 @@ const LogoutModal = ({ onConfirm, onCancel }: { onConfirm: () => void; onCancel:
         </div>
         <div>
           <h3 className="text-xl font-semibold text-white font-playfair">Sign out?</h3>
-          <p className="text-sm text-white/40 font-roboto mt-1">You&apos;ll need to log back in to access your cart and orders.</p>
+          <p className="text-sm text-white/40 font-roboto mt-1">You'll need to log back in to access your cart and orders.</p>
         </div>
       </div>
       <div className="flex gap-3">
@@ -162,10 +162,15 @@ const LogoutModal = ({ onConfirm, onCancel }: { onConfirm: () => void; onCancel:
    Page
 ───────────────────────────────────────── */
 export default function ProfilePage() {
-  const { user, logout, isLoading } = useAuth();
-  const router = useRouter();
+  const { user, logout, isLoading , accessToken } = useAuth();
+  // const router = useRouter();
   const [avatarHovered, setAvatarHovered] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [showEditSheet,   setShowEditSheet]   = useState(false);
+  const [displayName,     setDisplayName]     = useState(user?.name ?? '');
+  // const  cookieStore = cookies();
+
+  //  const token = cookieStore.get('accessToken')?.value;
 
   const handleLogout = () => {
     logout(); // clears cookies + state, redirects to /
@@ -176,18 +181,10 @@ export default function ProfilePage() {
     hidden: {},
     show: { transition: { staggerChildren: 0.07 } },
   };
-
-const item: Variants = {
-  hidden: { opacity: 0, y: 18 },
-  show: {
-    opacity: 1,
-    y: 0,
-    transition: {
-      duration: 0.4,
-      ease: [0.25, 0.46, 0.45, 0.94] as [number, number, number, number],
-    },
-  },
-};
+  const item: import('motion/react').Variants = {
+    hidden: { opacity: 0, y: 18 },
+    show:   { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] as number[] } },
+  };
 
   /* ── Loading skeleton ── */
   if (isLoading) {
@@ -274,6 +271,8 @@ const item: Variants = {
         <span className="text-lg font-semibold text-white/80 font-playfair">Profile</span>
         <motion.button
           whileTap={{ scale: 0.9 }}
+                        onClick={() => setShowEditSheet(true)}
+
           className="w-9 h-9 flex items-center justify-center rounded-xl text-white/60 hover:text-white transition-colors"
           style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.09)" }}
         >
@@ -334,31 +333,14 @@ const item: Variants = {
                 </AnimatePresence>
               </motion.div>
 
-              {/* Name + email */}
+              {/* Name */}
               <div className="flex flex-col items-center gap-1.5">
                 <h1 className="text-2xl font-semibold text-white font-playfair" style={{ letterSpacing: "-0.02em" }}>
-                  {user.name}
+                  {displayName || user.name}
                 </h1>
-                <span className="text-sm text-white/45 font-roboto">{user.email}</span>
 
-                {/* Verified / unverified badge */}
-                {/* <div className="mt-1 flex items-center gap-2">
-                  <span
-                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold tracking-wider uppercase"
-                    style={{
-                      background: user.isEmailVerified ? "rgba(74,222,128,0.12)" : "rgba(251,191,36,0.12)",
-                      color:      user.isEmailVerified ? "#4ade80"               : "#fbbf24",
-                      border:     `1px solid ${user.isEmailVerified ? "rgba(74,222,128,0.2)" : "rgba(251,191,36,0.2)"}`,
-                    }}
-                  >
-                    <span
-                      className="w-1.5 h-1.5 rounded-full inline-block"
-                      style={{ background: user.isEmailVerified ? "#4ade80" : "#fbbf24",
-                        boxShadow: `0 0 5px ${user.isEmailVerified ? "#4ade80" : "#fbbf24"}` }}
-                    />
-                    {user.isEmailVerified ? "Email Verified" : "Email Unverified"}
-                  </span>
-                </div> */}
+               {/* Verified / unverified badge */}
+             <div className="mt-1 flex items-center gap-2"> <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold tracking-wider uppercase" style={{ background: user.isPhoneVerified ? "rgba(74,222,128,0.12)" : "rgba(251,191,36,0.12)", color: user.isPhoneVerified ? "#4ade80" : "#fbbf24", border: `1px solid ${user.isPhoneVerified ? "rgba(74,222,128,0.2)" : "rgba(251,191,36,0.2)"}`, }} > <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: user.isPhoneVerified ? "#4ade80" : "#fbbf24", boxShadow: `0 0 5px ${user.isPhoneVerified ? "#4ade80" : "#fbbf24"}` }} /> {user.isPhoneVerified ? "Phone Verified" : "Phone Unverified"} </span> </div>
               </div>
             </div>
 
@@ -380,10 +362,9 @@ const item: Variants = {
               backdropFilter: "blur(16px)",
             }}
           >
-            <FieldRow label="Full Name"    value={user.name} />
-            <FieldRow label="Email"        value={user.email} />
+            <FieldRow label="Full Name"    value={displayName || user.name} />
             <FieldRow label="Phone"        value={user.phoneNumber || "—"} />
-            {/* <FieldRow label="Address"      value="Manage from addresses" icon={<MapPinIcon />} /> */}
+            <FieldRow label="Address"      value="Manage from addresses" icon={<MapPinIcon />} />
             <div className="flex items-start justify-between gap-4 py-4">
               <div className="flex flex-col gap-0.5">
                 <span className="text-[11px] font-semibold tracking-widest uppercase text-white/35 font-roboto">Password</span>
@@ -405,7 +386,7 @@ const item: Variants = {
           >
             <p className="text-[11px] font-semibold tracking-widest uppercase text-white/30 px-4 pb-2 font-roboto">Account</p>
             <NavRow label="Order History"   icon={<PackageIcon />} href="/order-history"         />
-            {/* <NavRow label="Paymentl Details" icon={<CardIcon />}    href="/payment-details" /> */}
+            {/* <NavRow label="Payment Details" icon={<CardIcon />}    href="/payment-details" /> */}
             <NavRow label="Saved Addresses" icon={<MapPinIcon />}  href="/address"       />
             {/* <NavRow label="Notifications"   icon={<BellIcon />}    href="/notifications"   /> */}
           </motion.div>
@@ -415,6 +396,7 @@ const item: Variants = {
             <motion.button
               whileHover={{ scale: 1.02, boxShadow: "0 8px 28px rgba(200,234,188,0.18)" }}
               whileTap={{ scale: 0.97 }}
+              onClick={() => setShowEditSheet(true)}
               className="flex-1 flex items-center justify-center gap-2.5 py-4 rounded-2xl font-semibold text-sm font-poppins transition-all"
               style={{
                 background: "linear-gradient(135deg, #e8f5e0 0%, #c8eabc 100%)",
@@ -457,6 +439,22 @@ const item: Variants = {
           <LogoutModal
             onConfirm={handleLogout}
             onCancel={() => setShowLogoutModal(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Profile edit sheet */}
+      <AnimatePresence>
+        {showEditSheet && (
+          <ProfileEditSheet
+            currentName={displayName || user.name}
+            phoneNumber={user.phoneNumber}
+            accessToken={accessToken}
+            onClose={() => setShowEditSheet(false)}
+            onSuccess={updatedName => {
+              setDisplayName(updatedName);
+              setShowEditSheet(false);
+            }}
           />
         )}
       </AnimatePresence>

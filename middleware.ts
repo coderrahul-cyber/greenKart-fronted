@@ -2,41 +2,33 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-/* ── User-protected routes ── */
+/* ── User-protected routes (require login) ── */
 const USER_PROTECTED = [
   '/cart', '/profile', '/orders', '/order-history', '/address',
   '/checkout', '/order-confirmed', '/payment-details', '/addresses', '/notifications',
 ];
 
-/* ── Admin-protected routes (everything under /admin except /admin/login) ── */
+/* ── Admin-protected routes ── */
 const ADMIN_PUBLIC = ['/admin/login'];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  /* ════════════════════════════════════════
-     ADMIN routes — use admin_ prefixed cookie
-  ════════════════════════════════════════ */
+  /* ── Admin routes ── */
   if (pathname.startsWith('/admin')) {
-    const adminToken = request.cookies.get('admin_accessToken')?.value;
+    const adminToken    = request.cookies.get('admin_accessToken')?.value;
     const isAdminPublic = ADMIN_PUBLIC.some(p => pathname.startsWith(p));
 
-    // Not logged in → redirect to admin login (except the login page itself)
     if (!isAdminPublic && !adminToken) {
       return NextResponse.redirect(new URL('/admin/login', request.url));
     }
-
-    // Already logged in admin trying to visit login → send to dashboard
     if (isAdminPublic && adminToken) {
       return NextResponse.redirect(new URL('/admin/dashboard', request.url));
     }
-
     return NextResponse.next();
   }
 
-  /* ════════════════════════════════════════
-     USER routes
-  ════════════════════════════════════════ */
+  /* ── User auth guard ── */
   const userToken   = request.cookies.get('accessToken')?.value;
   const isProtected = USER_PROTECTED.some(p => pathname.startsWith(p));
 
@@ -46,7 +38,10 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if ((pathname === '/login' || pathname === '/register') && userToken) {
+  // Don't redirect /register if user is on the OTP verification step
+  // (?otp=1 is set by the register page when moving to step 3)
+  const isOtpStep = pathname === '/register' && request.nextUrl.searchParams.get('otp') === '1';
+  if ((pathname === '/login' || pathname === '/register') && userToken && !isOtpStep) {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
@@ -55,13 +50,11 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // User routes
     '/cart/:path*', '/profile/:path*', '/orders/:path*', '/checkout/:path*',
     '/order-history/:path*', '/order-confirmed/:path*',
     '/address/:path*', '/payment-details/:path*',
     '/addresses/:path*', '/notifications/:path*',
     '/login', '/register',
-    // Admin routes
     '/admin/:path*',
   ],
 };

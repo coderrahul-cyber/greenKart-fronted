@@ -4,10 +4,12 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useWebPush } from '@/hooks/useWebPush';
+import { useAdminAuth } from '../context/AdminAuthContext';
 
 const DISMISSED_KEY = 'gk_push_banner_dismissed';
 
 export default function PushNotificationSetup() {
+  
   const {
     subscribe, unsubscribe,
     permission, subscribed,
@@ -162,7 +164,7 @@ export default function PushNotificationSetup() {
             initial={{ opacity: 0, scale: 0.85, y: 8 }}
             animate={{ opacity: 1, scale: 1,    y: 0 }}
             exit={{   opacity: 0, scale: 0.85,  y: 8 }}
-            className="fixed bottom-5 right-5 z-50 flex items-center gap-2 px-3 py-1.5 rounded-full"
+            className="fixed top-5 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 px-3 py-1.5 rounded-full"
             style={{
               background: 'rgba(8,12,18,0.92)',
               border:     '1px solid rgba(34,197,94,0.2)',
@@ -177,6 +179,9 @@ export default function PushNotificationSetup() {
           </motion.div>
         )}
       </AnimatePresence>
+
+     
+      
 
       {/* ════════════════════════════════════════
           BLOCKED STATE — tells admin how to fix it
