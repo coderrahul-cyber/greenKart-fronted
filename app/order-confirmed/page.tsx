@@ -8,7 +8,7 @@ import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useReceiptDownload } from '@/hooks/useReceiptDownload';
 
-const API = 'http://localhost:4000/api/v1';
+const API = process.env.NEXT_PUBLIC_SHIPPING_CHARGE;
 
 /* ─────────────────────────────────────────
    Mini order-summary card shown on page

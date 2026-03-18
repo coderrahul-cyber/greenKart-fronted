@@ -10,7 +10,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useCart } from '@/context/CartContext';
 import { OutOfStockItem } from '@/hooks/usePlaceOrder';
 
-const API = 'http://localhost:4000/api/v1';
+const API = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1`;
 
 /* ─────────────────────────────────────────
    Icons

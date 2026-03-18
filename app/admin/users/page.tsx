@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import AdminShell from '@/app/admin/components/AdminShell';
 import { useAdminAuth } from '@/app/admin/context/AdminAuthContext';
 
-const API = 'http://localhost:4000/api/v1';
+const API = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1`;
 
 interface User {
   _id: string; name: string; phoneNumber: string;

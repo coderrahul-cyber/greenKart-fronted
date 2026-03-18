@@ -9,7 +9,7 @@
 import { useState, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 
-const API = "http://localhost:4000/api/v1";
+const API = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1`;
 
 /* ─────────────────────────────────────────
    Types (mirror backend order shape)

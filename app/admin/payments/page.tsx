@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import AdminShell from '@/app/admin/components/AdminShell';
 import { useAdminAuth } from '@/app/admin/context/AdminAuthContext';
 
-const API = 'http://localhost:4000/api/v1';
+const API = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1`;
 
 const PS: Record<string, { bg: string; text: string }> = {
   pending:   { bg:'rgba(251,191,36,0.1)',  text:'#fbbf24' },
