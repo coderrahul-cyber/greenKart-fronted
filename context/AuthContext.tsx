@@ -74,6 +74,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const refreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  useEffect(() => {
+  (async () => {
+    try {
+      const res = await fetch(`${API}/users/me`, {
+        credentials: "include"
+      });
+
+      const json = await res.json();
+
+      if (res.ok) {
+        setUser(json.data.user);
+      } else {
+        setUser(null);
+      }
+    } catch {
+      setUser(null);
+    } finally {
+      setIsLoading(false); // 🔥 important
+    }
+  })();
+}, []);
   /* ── Clear ── */
   const clearAll = useCallback(() => {
     setUser(null);
@@ -83,21 +104,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   /* ── Fetch profile (cookie-based) ── */
   const fetchMe = useCallback(async (): Promise<User | null> => {
-    try {
-      const res = await fetch(`${API}/users/me`, {
+  try {
+    const res = await fetch(`${API}/users/me`, {
+      credentials: "include",
+    });
+
+    // 🔴 If unauthorized → try refresh
+    if (res.status === 401) {
+      const refreshRes = await fetch(`${API}/users/refresh-token`, {
+        method: "POST",
         credentials: "include",
       });
 
-      if (!res.ok) return null;
+      if (!refreshRes.ok) return null;
 
-      const json = await res.json();
+      // retry /me after refresh
+      const retryRes = await fetch(`${API}/users/me`, {
+        credentials: "include",
+      });
+
+      if (!retryRes.ok) return null;
+
+      const json = await retryRes.json();
       const raw = json?.data?.user ?? json?.data ?? json?.user ?? null;
 
       return raw ? mapUser(raw) : null;
-    } catch {
-      return null;
     }
-  }, []);
+
+    if (!res.ok) return null;
+
+    const json = await res.json();
+    const raw = json?.data?.user ?? json?.data ?? json?.user ?? null;
+
+    return raw ? mapUser(raw) : null;
+
+  } catch {
+    return null;
+  }
+}, []);
 
   /* ── Persist ── */
   const persist = useCallback((userData: User) => {

@@ -12,7 +12,7 @@ const IMAGES = [
 ];
 
 export default function AboutClient() {
-  console.log(process.env.NEXT_PUBLIC_CONTACT_PHONE)
+  // console.log(process.env.NEXT_PUBLIC_CONTACT_PHONE)
   return (
     <main
       className="min-h-screen overflow-hidden"
