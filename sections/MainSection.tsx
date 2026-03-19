@@ -1,9 +1,13 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useStockSync } from "@/hooks/useStockSync";
 import ProductCard from "@/components/ProductCard";
 import { motion, AnimatePresence } from "motion/react";
+import FloatingCartButton from "@/components/FloatingCartButton";
+import FloatingCallButton from "@/components/FloatingCallButton";
+import ContactFAB from "@/components/ContactFAB";
 
 /* ─────────────────────────────────────────
    Types — mirror IProduct from backend
@@ -126,7 +130,7 @@ const MainSection = () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API}/products`, { cache: "no-store" });
+      const res = await fetch(`${API}/products`, { cache: "no-store"  , credentials : "include"});
       if (!res.ok) throw new Error(`Server responded with ${res.status}`);
       const json = await res.json();
       // Support both { data: { products: [] } } and { data: [] } shapes
@@ -310,6 +314,9 @@ const MainSection = () => {
           </button>
         </motion.div>
       )}
+
+      <FloatingCartButton />
+      <ContactFAB message="hi" phoneNumber={process.env.NEXT_PUBLIC_CONTACT_PHONE!} />
     </section>
   );
 };

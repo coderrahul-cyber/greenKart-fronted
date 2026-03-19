@@ -8,7 +8,7 @@ import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useReceiptDownload } from '@/hooks/useReceiptDownload';
 
-const API = process.env.NEXT_PUBLIC_SHIPPING_CHARGE;
+const API = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1`;
 
 /* ─────────────────────────────────────────
    Mini order-summary card shown on page
@@ -23,8 +23,8 @@ function OrderSummaryCard({ order }: { order: any }) {
   const subtotal = order.itemsTotal    ?? 0;
   const tax      = order.taxAmount     ?? 0;   // 18% of itemsTotal, added by backend
   const discount = order.discount      ?? 0;
-  const envShip  = parseInt(process.env.NEXT_PUBLIC_SHIPPING_CHARGE ?? '0', 10);
-  const shipping = order.shippingCharge != null ? order.shippingCharge : envShip;
+  
+  const shipping = parseInt(process.env.NEXT_PUBLIC_SHIPPING_CHARGE ?? '0', 10);
   // Prefer totalAmount from DB; recalculate only if missing
   const total    = order.totalAmount   ?? (subtotal + shipping + tax - discount);
 
@@ -142,7 +142,10 @@ function OrderConfirmedContent() {
     (async () => {
       try {
         const res  = await fetch(`${API}/orders/${orderId}`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
+          // headers: { 
+          //   Authorization: `Bearer ${accessToken}` }
+            credentials : "include",
+            method : 'GET'
         });
         const json = await res.json();
         if (res.ok) setOrder(json?.data?.order ?? json?.data ?? json?.order ?? null);

@@ -419,7 +419,11 @@ export default function AddressPage() {
   const fetchAddresses = useCallback(async () => {
     if (!accessToken) return;
     try {
-      const res  = await fetch(`${API}/users/me`, { headers: { Authorization: `Bearer ${accessToken}` } });
+      const res  = await fetch(`${API}/users/me`, { 
+        // headers: { Authorization: `Bearer ${accessToken}}` 
+        credentials:"include"
+
+         });
       const json = await res.json();
       const raw  = json?.data?.user ?? json?.data ?? json?.user ?? {};
       setAddresses(Array.isArray(raw?.addresses) ? raw.addresses : []);
@@ -436,7 +440,8 @@ export default function AddressPage() {
       // console.log('Updating address', id, fields);
       const res  = await fetch(`${API}/users/me/addresses/${id}`, {
         method:  'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+        headers: { 'Content-Type': 'application/json',  },
+        credentials : "include",
         body:    JSON.stringify(fields),
       });
       const json = await res.json();

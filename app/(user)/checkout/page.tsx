@@ -190,7 +190,10 @@ export default function CheckoutPage() {
     if (!accessToken) return;
     (async () => {
       try {
-        const res  = await fetch(`${API}/users/me`, { headers: { Authorization: `Bearer ${accessToken}` } });
+        const res  = await fetch(`${API}/users/me`, {
+          //  headers: { Authorization: `Bearer ${accessToken}` }
+          credentials : "include"
+           });
         const json = await res.json();
         const userData  = json?.data?.user ?? json?.data ?? json?.user ?? {};
         const addresses = userData?.addresses ?? [];
@@ -218,7 +221,8 @@ export default function CheckoutPage() {
     try {
       const res  = await fetch(`${API}/orders`, {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+        headers: { 'Content-Type': 'application/json' },
+        credentials : "include",
         body:    JSON.stringify({
           shippingAddress: { line1: address.line1, line2: address.line2 ?? '', city: address.city, pincode: address.pincode },
           paymentMethod:   'cod',
@@ -282,7 +286,8 @@ export default function CheckoutPage() {
       try {
         await fetch(`${API}/orders/${createdOrderId}/cancel`, {
           method:  'PATCH',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+          headers: { 'Content-Type': 'application/json' },
+          credentials : "include",
           body:    JSON.stringify({ reason: 'Payment gateway unavailable' }),
         });
       } catch {}
@@ -328,7 +333,8 @@ export default function CheckoutPage() {
       // ── Step 1: Place order with paymentMethod "razorpay" ──────────
       const orderRes  = await fetch(`${API}/orders`, {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+        headers: { 'Content-Type': 'application/json'},
+        credentials :"include",
         body:    JSON.stringify({
           shippingAddress: { line1: address.line1, line2: address.line2 ?? '', city: address.city, pincode: address.pincode },
           paymentMethod:   'razorpay',
@@ -369,7 +375,8 @@ export default function CheckoutPage() {
       // ── Step 2: Create Razorpay order ──────────────────────────────
       const rzpOrderRes  = await fetch(`${API}/payments/razorpay/create-order`, {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+        headers: { 'Content-Type': 'application/json' },
+        credentials : "include",
         body:    JSON.stringify({ paymentId }),
       });
       const rzpOrderJson = await rzpOrderRes.json();
@@ -405,7 +412,8 @@ export default function CheckoutPage() {
           try {
             const verifyRes  = await fetch(`${API}/payments/razorpay/verify`, {
               method:  'POST',
-              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+              headers: { 'Content-Type': 'application/json' },
+              credentials : 'include',
               body:    JSON.stringify({
                 paymentId,
                 razorpayOrderId:   response.razorpay_order_id,

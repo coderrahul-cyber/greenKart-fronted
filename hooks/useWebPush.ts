@@ -5,10 +5,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAdminAuth } from '@/app/admin/context/AdminAuthContext';
 
-// const API = 'http://localhost:4000/api/v1/admin';
-const API = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/admin`;
-
-
 export type PushPermission = 'default' | 'granted' | 'denied';
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
@@ -22,14 +18,21 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
 }
 
 export function useWebPush() {
-  const { accessToken, isAuthenticated } = useAdminAuth();
+  // ✅ Use apiFetch — no more manual Bearer token management
+  const { apiFetch, isAuthenticated, accessToken } = useAdminAuth();
 
   const [permission, setPermission] = useState<PushPermission>('default');
   const [subscribed, setSubscribed] = useState(false);
   const [loading,    setLoading]    = useState(false);
   const [error,      setError]      = useState('');
   const [supported,  setSupported]  = useState(false);
+
   const swRegRef = useRef<ServiceWorkerRegistration | null>(null);
+
+  // ── Keep latest apiFetch in a ref so SW-message handler never
+  //    closes over a stale version after a silent token refresh ──
+  const apiFetchRef = useRef(apiFetch);
+  useEffect(() => { apiFetchRef.current = apiFetch; }, [apiFetch]);
 
   /* ── Check browser support on mount (client-only) ── */
   useEffect(() => {
@@ -41,19 +44,15 @@ export function useWebPush() {
     if (ok) setPermission(Notification.permission as PushPermission);
   }, []);
 
-  /* ── Save subscription to backend ── */
-  /* defined before the SW effect so it can be referenced inside it */
-  const saveSubscriptionToBackend = useCallback(async (sub: PushSubscription | any, token: string) => {
-    if (!token) return;
+  /* ── Save subscription to backend via apiFetch ── */
+  const saveSubscriptionToBackend = useCallback(async (sub: PushSubscription | any) => {
     try {
-      // Backend expects the raw PushSubscription object at req.body
-      // (NOT wrapped in { subscription: ... })
-      // adminSavePushSubscription reads: req.body.endpoint + req.body.keys.p256dh + req.body.keys.auth
+      // Backend reads: req.body.endpoint + req.body.keys.p256dh + req.body.keys.auth
       const body = sub.toJSON ? sub.toJSON() : sub;
-      const res = await fetch(`${API}/push/subscribe`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body:    JSON.stringify(body),
+      // ✅ apiFetch injects Authorization: Bearer automatically
+      const res  = await apiFetchRef.current('/admin/push/subscribe', {
+        method: 'POST',
+        body:   JSON.stringify(body),
       });
       if (!res.ok) {
         const json = await res.json().catch(() => ({}));
@@ -64,12 +63,13 @@ export function useWebPush() {
     } catch (e) {
       console.warn('[WebPush] saveSubscription network error:', e);
     }
+  // ✅ apiFetchRef is a ref — not a dep, always fresh, no stale closure
   }, []);
 
   /* ── Register SW + check existing subscription ─────────────────
      Runs once when supported + authenticated.
-     If an existing push subscription is found, re-saves it to the
-     backend (guards against backend data loss on redeploy).
+     Re-saves existing subscription to guard against backend data
+     loss on redeploy.
   ──────────────────────────────────────────────────────────────── */
   useEffect(() => {
     if (!supported || !isAuthenticated || !accessToken) return;
@@ -81,7 +81,6 @@ export function useWebPush() {
         if (cancelled) return;
         swRegRef.current = reg;
 
-        // Wait for SW to be ready/active
         await navigator.serviceWorker.ready;
         if (cancelled) return;
 
@@ -91,8 +90,7 @@ export function useWebPush() {
         if (existing) {
           setSubscribed(true);
           setPermission('granted');
-          // Re-save so backend always has fresh subscription
-          await saveSubscriptionToBackend(existing, accessToken);
+          await saveSubscriptionToBackend(existing);
         }
       } catch (err: any) {
         if (!cancelled) console.warn('[WebPush] SW registration failed:', err?.message);
@@ -106,20 +104,25 @@ export function useWebPush() {
   useEffect(() => {
     if (!supported || typeof navigator === 'undefined') return;
     const handler = (e: MessageEvent) => {
-      if (e.data?.type === 'PUSH_SUBSCRIPTION_CHANGED' && e.data.subscription && accessToken) {
-        saveSubscriptionToBackend(e.data.subscription, accessToken);
+      if (e.data?.type === 'PUSH_SUBSCRIPTION_CHANGED' && e.data.subscription) {
+        // Uses apiFetchRef — always has the latest token, even after silent refresh
+        saveSubscriptionToBackend(e.data.subscription);
       }
     };
     navigator.serviceWorker.addEventListener('message', handler);
     return () => navigator.serviceWorker.removeEventListener('message', handler);
-  }, [supported, accessToken, saveSubscriptionToBackend]);
+  }, [supported, saveSubscriptionToBackend]);
 
-  /* ── Fetch VAPID public key from backend ── */
-    /* ── Fetch VAPID public key from backend ── */
-  const getVapidKey = useCallback(async (_token: string): Promise<Uint8Array<ArrayBuffer> | null> => {
+  /* ── Fetch VAPID public key ─────────────────────────────────────
+     Public route — no auth needed, use plain fetch.
+     apiFetch is for protected routes only.
+  ──────────────────────────────────────────────────────────────── */
+  const getVapidKey = useCallback(async (): Promise<Uint8Array<ArrayBuffer> | null> => {
     try {
-      // vapid-key is a public route — no auth required
-      const res  = await fetch(`${API}/push/vapid-key`);
+      // ✅ Correct: VAPID key is a public endpoint, plain fetch is right here
+      const res  = await fetch(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/admin/push/vapid-key`
+      );
       const json = await res.json();
       const key  = json?.data?.publicKey ?? json?.publicKey ?? null;
       if (!key) {
@@ -135,17 +138,19 @@ export function useWebPush() {
 
   /* ── Subscribe ── */
   const subscribe = useCallback(async () => {
-    if (!supported) { setError('Push notifications not supported in this browser.'); return; }
-    if (!accessToken) { setError('Not authenticated.'); return; }
-    setLoading(true); setError('');
+    if (!supported)       { setError('Push notifications not supported in this browser.'); return; }
+    if (!isAuthenticated) { setError('Not authenticated.');                                return; }
+
+    setLoading(true);
+    setError('');
 
     try {
-      // 1. Request permission — MUST be triggered by user gesture
+      // 1. Request permission — must be triggered by a user gesture
       const perm = await Notification.requestPermission();
       setPermission(perm as PushPermission);
       if (perm !== 'granted') {
         setError(perm === 'denied'
-          ? 'Permission denied. Click the 🔒 icon in address bar → Notifications → Allow.'
+          ? 'Permission denied. Click the 🔒 icon in the address bar → Notifications → Allow.'
           : 'Permission not granted.');
         return;
       }
@@ -158,8 +163,8 @@ export function useWebPush() {
       }
       await navigator.serviceWorker.ready;
 
-      // 3. Get VAPID public key from backend
-      const vapidKey = await getVapidKey(accessToken);
+      // 3. Fetch VAPID public key (public route — no token needed)
+      const vapidKey = await getVapidKey();
       if (!vapidKey) {
         setError('Could not fetch push key from server. Check VAPID_PUBLIC_KEY env var.');
         return;
@@ -171,8 +176,8 @@ export function useWebPush() {
         applicationServerKey: vapidKey,
       });
 
-      // 5. Send subscription to backend
-      await saveSubscriptionToBackend(sub, accessToken);
+      // 5. Send subscription to backend (apiFetch handles the token)
+      await saveSubscriptionToBackend(sub);
       setSubscribed(true);
 
     } catch (err: any) {
@@ -187,14 +192,14 @@ export function useWebPush() {
     } finally {
       setLoading(false);
     }
-  }, [supported, accessToken, getVapidKey, saveSubscriptionToBackend]);
+  }, [supported, isAuthenticated, getVapidKey, saveSubscriptionToBackend]);
 
   /* ── Unsubscribe ── */
   const unsubscribe = useCallback(async () => {
-    setLoading(true); setError('');
+    setLoading(true);
+    setError('');
     try {
-      const reg = swRegRef.current
-        ?? (await navigator.serviceWorker.ready);
+      const reg = swRegRef.current ?? (await navigator.serviceWorker.ready);
       const sub = await reg.pushManager.getSubscription();
       if (sub) await sub.unsubscribe();
       setSubscribed(false);

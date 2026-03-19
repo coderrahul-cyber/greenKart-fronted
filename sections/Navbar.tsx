@@ -8,7 +8,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 const MENU_LINKS = [
-  { label: "Shop",          href: "/shop",     icon: "M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.3 2.3c-.6.6-.2 1.7.7 1.7H17M17 13v4a2 2 0 01-2 2H9a2 2 0 01-2-2v-4" },
+  { label: "About-Us",          href: "/about",     icon: "M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.3 2.3c-.6.6-.2 1.7.7 1.7H17M17 13v4a2 2 0 01-2 2H9a2 2 0 01-2-2v-4" },
   // { label: "Seasonal",      href: "/seasonal", icon: "M12 2a10 10 0 100 20A10 10 0 0012 2zm0 0v20M2 12h20" },
   // { label: "Offers",        href: "/offers",   icon: "M7 7h.01M17 17h.01M7 17L17 7M6 6a1 1 0 112 0 1 1 0 01-2 0zm10 10a1 1 0 112 0 1 1 0 01-2 0z" },
   { label: "Order History", href: "/order-history",   icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" },

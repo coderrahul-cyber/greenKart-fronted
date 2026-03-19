@@ -5,8 +5,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import AdminShell from '@/app/admin/components/AdminShell';
 import { useAdminAuth } from '@/app/admin/context/AdminAuthContext';
 
-const API = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1`;
-
 const PS: Record<string, { bg: string; text: string }> = {
   pending:   { bg:'rgba(251,191,36,0.1)',  text:'#fbbf24' },
   paid:      { bg:'rgba(74,222,128,0.1)',  text:'#4ade80' },
@@ -15,6 +13,9 @@ const PS: Record<string, { bg: string; text: string }> = {
   cancelled: { bg:'rgba(239,68,68,0.08)',  text:'#f87171' },
 };
 
+const ALL_STATUSES = ['pending', 'paid', 'failed', 'refunded'] as const;
+type PaymentStatus = typeof ALL_STATUSES[number];
+
 interface Payment {
   _id: string; method: string; status: string; amount: number;
   orderId?: any; userId?: any; createdAt: string;
@@ -22,15 +23,55 @@ interface Payment {
 }
 
 /* ── Payment detail bottom sheet ── */
-function PaymentSheet({ payment, token, onClose }: { payment: Payment; token: string | null; onClose: () => void }) {
-  const [detail, setDetail] = useState<any>(null);
-  useEffect(() => {
-    if (!token) return;
-    fetch(`${API}/admin/payments/${payment._id}`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json()).then(j => setDetail(j?.data?.payment ?? j?.data ?? null)).catch(() => {});
-  }, [payment._id, token]);
+function PaymentSheet({
+  payment, onClose, onStatusUpdated,
+}: {
+  payment: Payment;
+  onClose: () => void;
+  onStatusUpdated: (id: string, newStatus: string) => void;
+}) {
+  const { apiFetch } = useAdminAuth();
+  const [detail,         setDetail]         = useState<any>(null);
+  const [statusLoading,  setStatusLoading]  = useState<string | null>(null); // which status btn is loading
+  const [statusError,    setStatusError]    = useState<string | null>(null);
+  const [currentStatus,  setCurrentStatus]  = useState(payment.status);
 
-  const s     = PS[payment.status] ?? PS.pending;
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res  = await apiFetch(`/admin/payments/${payment._id}`);
+        const json = await res.json();
+        if (!cancelled) setDetail(json?.data?.payment ?? json?.data ?? null);
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  }, [payment._id, apiFetch]);
+
+  const handleStatusChange = useCallback(async (newStatus: PaymentStatus) => {
+    if (newStatus === currentStatus) return;
+    setStatusLoading(newStatus);
+    setStatusError(null);
+    try {
+      const res  = await apiFetch(`/admin/payments/${payment._id}/status`, {
+        method: 'PATCH',
+        body:   JSON.stringify({ status: newStatus }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setStatusError(json?.message ?? `Failed to update status (${res.status})`);
+        return;
+      }
+      setCurrentStatus(newStatus);
+      onStatusUpdated(payment._id, newStatus);
+    } catch {
+      setStatusError('Network error — could not update status.');
+    } finally {
+      setStatusLoading(null);
+    }
+  }, [apiFetch, currentStatus, onStatusUpdated, payment._id]);
+
+  const s     = PS[currentStatus] ?? PS.pending;
   const order = detail?.orderId ?? payment.orderId ?? {};
   const user  = detail?.userId  ?? payment.userId  ?? {};
   const phone = user?.phoneNumber ?? '';
@@ -41,7 +82,7 @@ function PaymentSheet({ payment, token, onClose }: { payment: Payment; token: st
       style={{ background:'rgba(0,0,0,0.7)', backdropFilter:'blur(6px)' }} onClick={onClose}>
       <motion.div initial={{ y:'100%' }} animate={{ y:0 }} exit={{ y:'100%' }}
         transition={{ type:'spring', stiffness:320, damping:32 }}
-        className="w-full sm:max-w-sm max-h-[85vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl"
+        className="w-full sm:max-w-sm min-h-[70vh] max-h-[85vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl"
         style={{ background:'#0d1117', border:'1px solid rgba(6,182,212,0.15)', fontFamily:"'IBM Plex Mono',monospace" }}
         onClick={e => e.stopPropagation()}>
 
@@ -68,7 +109,47 @@ function PaymentSheet({ payment, token, onClose }: { payment: Payment; token: st
           {/* Amount */}
           <div className="rounded-2xl p-5 text-center" style={{ background:s.bg, border:`1px solid ${s.text}22` }}>
             <p className="text-4xl font-bold" style={{ color:s.text }}>₹{payment.amount?.toLocaleString('en-IN')}</p>
-            <span className="text-[10px] font-bold tracking-widest mt-1 capitalize block" style={{ color:s.text }}>{payment.status}</span>
+            <span className="text-[10px] font-bold tracking-widest mt-1 capitalize block" style={{ color:s.text }}>{currentStatus}</span>
+          </div>
+
+          {/* ── Status update buttons ─────────────────────────────────────── */}
+          <div className="rounded-2xl px-4 py-3 flex flex-col gap-2.5"
+            style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.06)' }}>
+            <p className="text-[9px] tracking-widest uppercase" style={{ color:'rgba(255,255,255,0.25)' }}>
+              Update Status
+            </p>
+            <div className="grid grid-cols-4 gap-1.5">
+              {ALL_STATUSES.map(st => {
+                const ss        = PS[st];
+                const isActive  = currentStatus === st;
+                const isLoading = statusLoading === st;
+                return (
+                  <button
+                    key={st}
+                    disabled={isActive || statusLoading !== null}
+                    onClick={() => handleStatusChange(st)}
+                    className="py-2 rounded-xl text-[9px] font-bold capitalize tracking-wide transition-all flex items-center justify-center gap-1"
+                    style={{
+                      background: isActive ? ss.bg    : 'rgba(255,255,255,0.04)',
+                      color:      isActive ? ss.text  : 'rgba(255,255,255,0.3)',
+                      border:     isActive ? `1px solid ${ss.text}44` : '1px solid rgba(255,255,255,0.06)',
+                      cursor:     isActive || statusLoading !== null ? 'not-allowed' : 'pointer',
+                      opacity:    !isActive && statusLoading !== null && !isLoading ? 0.4 : 1,
+                    }}
+                  >
+                    {isLoading
+                      ? <div className="w-2.5 h-2.5 border border-current/30 border-t-current rounded-full animate-spin" />
+                      : st
+                    }
+                  </button>
+                );
+              })}
+            </div>
+            {statusError && (
+              <p className="text-[10px] leading-relaxed" style={{ color:'rgba(252,165,165,0.85)' }}>
+                ⚠ {statusError}
+              </p>
+            )}
           </div>
 
           {/* Customer + call */}
@@ -126,7 +207,6 @@ function PaymentCard({ payment, onOpen }: { payment: Payment; onOpen: () => void
       style={{ background:'#0d1117', border:'1px solid rgba(255,255,255,0.06)' }}
       onClick={onOpen}>
 
-      {/* Top: amount + status */}
       <div className="flex items-start justify-between">
         <div>
           <p className="text-lg font-bold" style={{ color: payment.status === 'paid' ? '#4ade80' : s.text }}>
@@ -140,7 +220,6 @@ function PaymentCard({ payment, onOpen }: { payment: Payment; onOpen: () => void
           style={{ background:s.bg, color:s.text }}>{payment.status}</span>
       </div>
 
-      {/* Customer + call */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
@@ -164,7 +243,6 @@ function PaymentCard({ payment, onOpen }: { payment: Payment; onOpen: () => void
         )}
       </div>
 
-      {/* Method */}
       <div className="flex items-center gap-1.5 pt-2" style={{ borderTop:'1px solid rgba(255,255,255,0.04)' }}>
         <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.3)' }}>
           {payment.method === 'cod'
@@ -182,7 +260,7 @@ function PaymentCard({ payment, onOpen }: { payment: Payment; onOpen: () => void
 }
 
 export default function AdminPaymentsPage() {
-  const { accessToken } = useAdminAuth();
+  const { apiFetch, isLoading: authLoading } = useAdminAuth();
   const [payments, setPayments] = useState<Payment[]>([]);
   const [stats,    setStats]    = useState<any>(null);
   const [loading,  setLoading]  = useState(true);
@@ -193,20 +271,32 @@ export default function AdminPaymentsPage() {
   const PER_PAGE = 12;
 
   const fetchPayments = useCallback(async () => {
-    if (!accessToken) return;
     setLoading(true);
     try {
       const [pRes, sRes] = await Promise.all([
-        fetch(`${API}/admin/payments`,       { headers: { Authorization: `Bearer ${accessToken}` } }),
-        fetch(`${API}/admin/payments/stats`, { headers: { Authorization: `Bearer ${accessToken}` } }),
+        apiFetch('/admin/payments'),
+        apiFetch('/admin/payments/stats'),
       ]);
       const [pJson, sJson] = await Promise.all([pRes.json(), sRes.json()]);
       setPayments(pJson?.data?.payments ?? pJson?.data ?? []);
       setStats(sJson?.data ?? null);
     } catch {} finally { setLoading(false); }
-  }, [accessToken]);
+  }, [apiFetch]);
 
-  useEffect(() => { fetchPayments(); }, [fetchPayments]);
+  useEffect(() => {
+    if (!authLoading) fetchPayments();
+  }, [authLoading, fetchPayments]);
+
+  // ── Called by PaymentSheet after a successful PATCH ──────────────────────
+  // Updates the payment in the list in-place so the card badge refreshes
+  // without a full refetch.
+  const handleStatusUpdated = useCallback((id: string, newStatus: string) => {
+    setPayments(prev =>
+      prev.map(p => p._id === id ? { ...p, status: newStatus } : p)
+    );
+    // Also patch the selected payment so the sheet re-renders with new colour
+    setSelected(prev => prev?._id === id ? { ...prev, status: newStatus } : prev);
+  }, []);
 
   const filtered = payments.filter(p => {
     const matchStatus = filter === 'all' || p.status === filter;
@@ -218,7 +308,6 @@ export default function AdminPaymentsPage() {
   const paginated  = filtered.slice((page-1)*PER_PAGE, page*PER_PAGE);
   const totalPages = Math.ceil(filtered.length / PER_PAGE);
 
-  // Compute stats from data if API stats shape differs
   const totalRevenue = stats?.totalCollected ?? payments.filter(p => p.status === 'paid').reduce((s, p) => s + (p.amount ?? 0), 0);
   const countByStatus = (st: string) => {
     if (stats?.byStatus) {
@@ -230,7 +319,6 @@ export default function AdminPaymentsPage() {
 
   return (
     <AdminShell title="Payments">
-      {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
         {[
           { l:'Revenue',  v:`₹${totalRevenue.toLocaleString('en-IN')}`, c:'#4ade80' },
@@ -245,7 +333,6 @@ export default function AdminPaymentsPage() {
         ))}
       </div>
 
-      {/* Search + filter */}
       <div className="relative mb-3">
         <svg className="absolute left-3 top-1/2 -translate-y-1/2" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -267,7 +354,6 @@ export default function AdminPaymentsPage() {
         })}
       </div>
 
-      {/* Cards */}
       {loading ? (
         <div className="flex items-center justify-center h-48">
           <div className="w-5 h-5 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin" />
@@ -306,7 +392,13 @@ export default function AdminPaymentsPage() {
       )}
 
       <AnimatePresence>
-        {selected && <PaymentSheet payment={selected} token={accessToken} onClose={() => setSelected(null)} />}
+        {selected && (
+          <PaymentSheet
+            payment={selected}
+            onClose={() => setSelected(null)}
+            onStatusUpdated={handleStatusUpdated}
+          />
+        )}
       </AnimatePresence>
     </AdminShell>
   );

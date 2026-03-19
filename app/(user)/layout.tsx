@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
-import { Geist, Roboto , Poppins ,  Playfair_Display } from "next/font/google";
-import "./globals.css";
+import {  Roboto , Poppins ,  Playfair_Display } from "next/font/google";
+import "../globals.css";
+import { CartProvider } from "../../context/CartContext";
+import { AuthProvider } from "../../context/AuthContext";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
+
 
 const roboto = Roboto({
   variable: "--font-roboto",
@@ -39,7 +38,11 @@ export default function RootLayout({
       <body
         className={`${popins.variable} ${roboto.variable} ${PlayfairDisplay.variable} antialiased`}
       >
+        <AuthProvider>
+        <CartProvider>
         {children}
+        </CartProvider>
+        </AuthProvider>
       </body>
     </html>
   );

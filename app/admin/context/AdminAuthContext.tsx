@@ -3,6 +3,7 @@
 // Stores admin tokens in cookies prefixed with "admin_".
 // Auto-refreshes the access token every 13 minutes so the
 // admin never gets logged out during an active session.
+// apiFetch() automatically attaches the Bearer token to every request.
 'use client';
 
 import {
@@ -12,7 +13,7 @@ import {
 import { useRouter } from 'next/navigation';
 
 const API = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1`;
-const REFRESH_MS     = 13 * 60 * 1000; // refresh every 13 min (token expires at 15)
+const REFRESH_MS = 13 * 60 * 1000; // refresh every 13 min (token expires at 15)
 
 /* ─────────────────────────────────────────
    Types
@@ -27,8 +28,10 @@ interface AdminAuthContextType {
   accessToken:     string | null;
   isLoading:       boolean;
   isAuthenticated: boolean;
-  login:   (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  logout:  () => void;
+  login:    (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  logout:   () => void;
+  /** Drop-in fetch wrapper — automatically attaches Authorization: Bearer <token> */
+  apiFetch: (path: string, options?: RequestInit) => Promise<Response>;
 }
 
 const AdminAuthContext = createContext<AdminAuthContextType | null>(null);
@@ -57,15 +60,21 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const [admin,       setAdmin]       = useState<AdminUser | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [isLoading,   setIsLoading]   = useState(true);
-  const router      = useRouter();
+  const router       = useRouter();
   const refreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Keep a ref in sync with state so apiFetch always reads the latest token
+  // without needing to be re-created on every token change.
+  const accessTokenRef = useRef<string | null>(null);
+  useEffect(() => { accessTokenRef.current = accessToken; }, [accessToken]);
 
   /* ── Persist to cookies ── */
   const persist = useCallback((at: string, rt: string, adminData: AdminUser) => {
     setAccessToken(at);
     setAdmin(adminData);
-    setCookie('admin_accessToken',  at,                      1);   // 1 day
-    setCookie('admin_refreshToken', rt,                      30);  // 30 days
+    accessTokenRef.current = at;
+    setCookie('admin_accessToken',  at,                        1);  // 1 day
+    setCookie('admin_refreshToken', rt,                        30); // 30 days
     setCookie('admin_user',         JSON.stringify(adminData), 1);
   }, []);
 
@@ -73,6 +82,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const clearAll = useCallback(() => {
     setAccessToken(null);
     setAdmin(null);
+    accessTokenRef.current = null;
     deleteCookie('admin_accessToken');
     deleteCookie('admin_refreshToken');
     deleteCookie('admin_user');
@@ -100,6 +110,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       if (!newAt) { clearAll(); return null; }
 
       setAccessToken(newAt);
+      accessTokenRef.current = newAt;
       setCookie('admin_accessToken', newAt, 1);
       return newAt;
     } catch {
@@ -126,6 +137,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     try {
       const parsed = JSON.parse(storedUser) as AdminUser;
       setAccessToken(storedToken);
+      accessTokenRef.current = storedToken;
       setAdmin(parsed);
       startRefreshCycle();
     } catch {
@@ -172,12 +184,47 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     router.push('/admin/login');
   }, [clearAll, router]);
 
+  /* ── apiFetch ──────────────────────────────────────────────
+     Drop-in replacement for fetch() on all protected admin
+     routes. Reads the latest token from the ref (not state)
+     so it never closes over a stale value, then injects the
+     Authorization header automatically.
+
+     Usage:
+       const res = await apiFetch('/admin/dashboard');
+       const res = await apiFetch('/admin/products', {
+         method: 'POST',
+         body: JSON.stringify(data),
+       });
+  ─────────────────────────────────────────────────────── */
+  const apiFetch = useCallback(async (
+    path: string,
+    options: RequestInit = {},
+  ): Promise<Response> => {
+    // Prefer live state token; fall back to cookie in case of
+    // cold rehydration before state has settled.
+    const token = accessTokenRef.current ?? getCookie('admin_accessToken');
+
+    return fetch(`${API}${path}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        // Caller-supplied headers always win (e.g. multipart/form-data)
+        ...options.headers,
+      },
+    });
+  }, []); // stable ref — never needs to re-create
+
   return (
     <AdminAuthContext.Provider value={{
-      admin, accessToken,
+      admin,
+      accessToken,
       isLoading,
       isAuthenticated: !!accessToken,
-      login, logout,
+      login,
+      logout,
+      apiFetch,
     }}>
       {children}
     </AdminAuthContext.Provider>

@@ -35,7 +35,8 @@ export default function ProfileEditSheet({ currentName, phoneNumber, accessToken
     try {
       const res  = await fetch(`${API}/users/me`, {
         method:  'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+        headers: { 'Content-Type': 'application/json' },
+        credentials : "include",
         body:    JSON.stringify({ name: trimmed }),
       });
       const json = await res.json();

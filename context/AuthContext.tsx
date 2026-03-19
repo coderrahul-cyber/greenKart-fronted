@@ -42,44 +42,24 @@ interface RegisterData {
   name:        string;
   phoneNumber: string;
   password:    string;
-  isPhoneVerified?: boolean,
+  isPhoneVerified?: boolean;
   address?: { line1: string; line2?: string; city: string; pincode: string };
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 const API = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1`;
-const REFRESH_MS = 13 * 60 * 1000; // refresh every 13 min (token expires at 15)
+const REFRESH_MS = 13 * 60 * 1000;
 
 /* ─────────────────────────────────────────
-   Cookie helpers
-───────────────────────────────────────── */
-function setCookie(name: string, value: string, days = 7) {
-  // days=0 → session cookie (no expires — browser deletes on close)
-  const expiresPart = days > 0
-    ? `; expires=${new Date(Date.now() + days * 864e5).toUTCString()}`
-    : '';
-  document.cookie = `${name}=${encodeURIComponent(value)}${expiresPart}; path=/; SameSite=Lax`;
-}
-function getCookie(name: string): string | null {
-  return document.cookie.split('; ').reduce<string | null>((acc, part) => {
-    const [k, v] = part.split('=');
-    return k === name ? decodeURIComponent(v ?? '') : acc;
-  }, null);
-}
-function deleteCookie(name: string) {
-  document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
-}
-
-/* ─────────────────────────────────────────
-   Map raw API user → User type
+   Helpers
 ───────────────────────────────────────── */
 function mapUser(u: any): User {
   return {
-    id:              u._id         ?? u.id ?? '',
-    name:            u.name        ?? '',
+    id:              u._id ?? u.id ?? '',
+    name:            u.name ?? '',
     phoneNumber:     u.phoneNumber ?? '',
-    isPhoneVerified: u.isPhoneVerified ?? u.isPhoneVerified ?? false,
-    cart:            u.cart        ?? '',
+    isPhoneVerified: u.isPhoneVerified ?? false,
+    cart:            u.cart ?? '',
     addresses:       Array.isArray(u.addresses) ? u.addresses : [],
   };
 }
@@ -88,221 +68,182 @@ function mapUser(u: any): User {
    Provider
 ───────────────────────────────────────── */
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user,        setUser]        = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [isLoading,   setIsLoading]   = useState(true);
-  const router       = useRouter();
+  const [isLoading, setIsLoading] = useState(true);
+  const router = useRouter();
   const refreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  /* ── Clear all auth state + cookies ── */
+  /* ── Clear ── */
   const clearAll = useCallback(() => {
     setUser(null);
     setAccessToken(null);
-    deleteCookie('accessToken');
-    deleteCookie('refreshToken');
-    deleteCookie('user');
-    if (typeof localStorage !== 'undefined') localStorage.removeItem('gk_remember');
     if (refreshTimer.current) clearInterval(refreshTimer.current);
   }, []);
 
-  /* ── Fetch full profile ── */
-  const fetchMe = useCallback(async (token: string): Promise<User | null> => {
+  /* ── Fetch profile (cookie-based) ── */
+  const fetchMe = useCallback(async (): Promise<User | null> => {
     try {
       const res = await fetch(`${API}/users/me`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
       });
+
       if (!res.ok) return null;
+
       const json = await res.json();
-      const raw  = json?.data?.user ?? json?.data ?? json?.user ?? null;
+      const raw = json?.data?.user ?? json?.data ?? json?.user ?? null;
+
       return raw ? mapUser(raw) : null;
     } catch {
       return null;
     }
   }, []);
 
-  /* ── Persist tokens + user to cookies ──────────────────────────
-     rememberMe=true  → 30-day cookies (survive browser close)
-     rememberMe=false → session cookies (expire when tab closes,
-                        achieved by omitting expires — days=0)
-  ────────────────────────────────────────────────────────────── */
-  const persist = useCallback((at: string, rt: string, userData: User, rememberMe = false) => {
-    setAccessToken(at);
+  /* ── Persist ── */
+  const persist = useCallback((userData: User) => {
+    setAccessToken("cookie");
     setUser(userData);
-    const atDays  = rememberMe ? 30 : 0;   // 0 = session cookie
-    const rtDays  = rememberMe ? 30 : 0;
-    const uDays   = rememberMe ? 30 : 0;
-    setCookie('accessToken',  at,                      atDays);
-    setCookie('refreshToken', rt,                      rtDays);
-    setCookie('user',         JSON.stringify(userData), uDays);
-    // Store the remember preference so silentRefresh can re-persist with the same TTL
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('gk_remember', rememberMe ? '1' : '0');
-    }
   }, []);
 
-  /* ── Silent token refresh ─────────────────────────────────────────
-     Calls POST /users/refresh-token with the stored refresh token.
-     On success: updates accessToken state + cookie silently.
-     On failure: refresh token expired → log the user out.
-  ────────────────────────────────────────────────────────────────── */
-  const silentRefresh = useCallback(async (): Promise<string | null> => {
-    const rt = getCookie('refreshToken');
-    if (!rt) { clearAll(); return null; }
+  /* ── Silent refresh ── */
+  const silentRefresh = useCallback(async (): Promise<boolean> => {
     try {
-      const res  = await fetch(`${API}/users/refresh-token`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ refreshToken: rt }),
+      const res = await fetch(`${API}/users/refresh-token`, {
+        method: "POST",
+        credentials: "include",
       });
-      const json = await res.json();
-      if (!res.ok || !json.success) {
-        // Refresh token invalid / expired — session truly over
-        clearAll();
-        return null;
-      }
-      const newAt = json?.data?.accessToken ?? json?.accessToken ?? null;
-      if (!newAt) { clearAll(); return null; }
 
-      setAccessToken(newAt);
-      // Re-persist with the same TTL the user originally chose
-      const wasRemembered = typeof localStorage !== 'undefined' && localStorage.getItem('gk_remember') === '1';
-      setCookie('accessToken', newAt, wasRemembered ? 30 : 0);
-      return newAt;
+      if (!res.ok) {
+        clearAll();
+        return false;
+      }
+
+      return true;
     } catch {
-      // Network error — don't log out, keep existing token and retry next cycle
-      return null;
+      return false;
     }
   }, [clearAll]);
 
-  /* ── Start the 13-min refresh interval ── */
+  /* ── Start refresh cycle ── */
   const startRefreshCycle = useCallback(() => {
     if (refreshTimer.current) clearInterval(refreshTimer.current);
+
     refreshTimer.current = setInterval(() => {
       silentRefresh();
     }, REFRESH_MS);
   }, [silentRefresh]);
 
-  /* ── Cleanup interval on unmount ── */
-  useEffect(() => () => {
-    if (refreshTimer.current) clearInterval(refreshTimer.current);
+  useEffect(() => {
+    return () => {
+      if (refreshTimer.current) clearInterval(refreshTimer.current);
+    };
   }, []);
 
-  /* ── Rehydrate from cookies on mount ─────────────────────────────
-     1. If accessToken is already in state (just set by login/register),
-        skip cookie read entirely — already authenticated, set isLoading=false.
-     2. Otherwise read stored cookie and validate with /users/me.
-     3. If /users/me fails (token expired), try a silent refresh once.
-     4. If refresh also fails — clear everything.
-  ────────────────────────────────────────────────────────────────── */
+  /* ── Initial load ── */
   useEffect(() => {
-    // Already authenticated (e.g. just registered) — no need to re-read cookie
-    if (accessToken) { setIsLoading(false); return; }
-
-    const token = getCookie('accessToken');
-    if (!token) { setIsLoading(false); return; }
-
-    setAccessToken(token); // set immediately so auth guards don't flash
-
-    fetchMe(token).then(async freshUser => {
+    fetchMe().then(async (freshUser) => {
       if (freshUser) {
-        // Token still valid — restore session and start refresh cycle
-        setUser(freshUser);
-        setCookie('user', JSON.stringify(freshUser), 1);
+        persist(freshUser);
         startRefreshCycle();
       } else {
-        // Token expired — attempt one silent refresh before giving up
-        const newAt = await silentRefresh();
-        if (newAt) {
-          const userAfterRefresh = await fetchMe(newAt);
-          if (userAfterRefresh) {
-            setUser(userAfterRefresh);
-            setCookie('user', JSON.stringify(userAfterRefresh), 1);
+        const refreshed = await silentRefresh();
+        if (refreshed) {
+          const userAfter = await fetchMe();
+          if (userAfter) {
+            persist(userAfter);
             startRefreshCycle();
           } else {
             clearAll();
           }
         }
-        // clearAll already called inside silentRefresh if it failed
       }
       setIsLoading(false);
     });
-  }, [fetchMe, silentRefresh, startRefreshCycle, clearAll]);
+  }, [fetchMe, silentRefresh, persist, startRefreshCycle, clearAll]);
 
   /* ── Login ── */
-  const login = async (phoneNumber: string, password: string, rememberMe = false) => {
+  const login = async (phoneNumber: string, password: string) => {
     try {
-      const res  = await fetch(`${API}/users/login`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ phoneNumber, password }),
+      const res = await fetch(`${API}/users/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phoneNumber, password }),
+        credentials: "include",
       });
+
       const json = await res.json();
-      if (!res.ok || !json.success)
-        return { success: false, error: json.message || 'Login failed' };
 
-      const { accessToken: at, refreshToken: rt } = json.data;
+      if (!res.ok || !json.success) {
+        return { success: false, error: json.message || "Login failed" };
+      }
 
-      const fullUser = await fetchMe(at);
-      if (!fullUser)
-        return { success: false, error: 'Could not load your profile. Please try again.' };
+      // FIX: use returned user directly (no race condition)
+      const userData = mapUser(json.data.user);
 
-      persist(at, rt, fullUser, rememberMe);
+      persist(userData);
       startRefreshCycle();
+
       return { success: true };
     } catch {
-      return { success: false, error: 'Network error — is the server running?' };
+      return { success: false, error: "Network error" };
     }
   };
 
   /* ── Register ── */
-  const register = async (data: RegisterData, rememberMe = false) => {
-  try {
-    const res  = await fetch(`${API}/users/register`, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(data),
-    });
-    const json = await res.json();
+  const register = async (data: RegisterData) => {
+    try {
+      const res = await fetch(`${API}/users/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
 
-    if (!res.ok || !json.success)
-      return { success: false, error: json.message || 'Registration failed.' };
+      const json = await res.json();
 
-    const { accessToken: at, refreshToken: rt } = json.data;
+      if (!res.ok || !json.success) {
+        return { success: false, error: json.message || "Registration failed" };
+      }
 
-    const fullUser = await fetchMe(at);
-    if (!fullUser)
-      return { success: false, error: 'Account created but could not load profile. Please log in.' };
+      // FIX: use backend user directly (no fetchMe call)
+      const userData = mapUser(json.data.user);
 
-    // FORCE phone as NOT verified
-    const modifiedUser: User = {
-      ...fullUser,
-      isPhoneVerified: false,
-    };
+      const modifiedUser: User = {
+        ...userData,
+        isPhoneVerified: false,
+      };
 
-    persist(at, rt, modifiedUser, rememberMe);
-    startRefreshCycle();
+      persist(modifiedUser);
+      startRefreshCycle();
 
-    return { success: true };
-  } catch {
-    return { success: false, error: 'Network error — is the server running?' };
-  }
-};
-
-
-
-
+      return { success: true };
+    } catch {
+      return { success: false, error: "Network error" };
+    }
+  };
 
   /* ── Logout ── */
-  const logout = useCallback(() => {
-    clearAll();
-    router.push('/');
-  }, [clearAll, router]);
+  const logout = useCallback(async () => {
+  try {
+    await fetch(`${API}/users/logout`, {
+      method: "POST",
+      credentials: "include",
+    });
+  } catch {}
+
+  clearAll();
+  router.push('/');
+}, [clearAll, router]);
 
   return (
     <AuthContext.Provider value={{
-      user, accessToken, isLoading,
+      user,
+      accessToken,
+      isLoading,
       isAuthenticated: !!accessToken,
-      login, register, logout,
+      login,
+      register,
+      logout,
     }}>
       {children}
     </AuthContext.Provider>

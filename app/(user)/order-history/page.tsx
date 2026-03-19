@@ -380,8 +380,10 @@ export default function OrderHistoryPage() {
       setError('');
       try {
         const res = await fetch(`${API}/orders`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
+          // headers: { Authorization: `Bearer ${accessToken}}`
+           credentials : "include"
+           },
+        );
         if (!res.ok) throw new Error(`Server error ${res.status}`);
         const json = await res.json();
         // Support { data: { orders: [] } } or { data: [] }

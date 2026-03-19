@@ -400,7 +400,9 @@ export function useReceiptDownload() {
     try {
       // Fetch order detail
       const res  = await fetch(`${API}/orders/${orderId}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
+        // headers: { Authorization: `Bearer ${accessToken}`},
+        credentials : "include"
+
       });
       const json = await res.json();
       if (!res.ok) { setError(json.message || "Could not fetch order details."); return; }
