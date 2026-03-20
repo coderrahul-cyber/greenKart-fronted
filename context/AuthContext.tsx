@@ -206,65 +206,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchMe, silentRefresh, persist, startRefreshCycle, clearAll]);
 
   /* ── Login ── */
-  const login = async (phoneNumber: string, password: string) => {
-    try {
-      const res = await fetch(`${API}/users/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phoneNumber, password }),
-        credentials: "include",
-      });
+/* ── Login ── */
+const login = async (phoneNumber: string, password: string) => {
+  try {
+    const res = await fetch(`${API}/users/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phoneNumber, password }),
+      credentials: "include",
+    });
 
-      const json = await res.json();
+    const json = await res.json();
 
-      if (!res.ok || !json.success) {
-        return { success: false, error: json.message || "Login failed" };
-      }
-
-      // FIX: use returned user directly (no race condition)
-      const userData = mapUser(json.data.user);
-
-      persist(userData);
-      startRefreshCycle();
-
-      return { success: true };
-    } catch {
-      return { success: false, error: "Network error" };
+    if (!res.ok || !json.success) {
+      return { success: false, error: json.message || "Login failed" };
     }
-  };
 
-  /* ── Register ── */
-  const register = async (data: RegisterData) => {
-    try {
-      const res = await fetch(`${API}/users/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-        credentials: "include",
-      });
+    const userData = mapUser(json.data.user);
+    persist(userData);
+    startRefreshCycle();
 
-      const json = await res.json();
+    return { success: true };
+  } catch {
+    return { success: false, error: "Network error" };
+  }
+};
 
-      if (!res.ok || !json.success) {
-        return { success: false, error: json.message || "Registration failed" };
-      }
+/* ── Register ── */
+const register = async (data: RegisterData) => {
+  try {
+    const res = await fetch(`${API}/users/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+      credentials: "include",
+    });
 
-      // FIX: use backend user directly (no fetchMe call)
-      const userData = mapUser(json.data.user);
+    const json = await res.json();
 
-      const modifiedUser: User = {
-        ...userData,
-        isPhoneVerified: false,
-      };
-
-      persist(modifiedUser);
-      startRefreshCycle();
-
-      return { success: true };
-    } catch {
-      return { success: false, error: "Network error" };
+    if (!res.ok || !json.success) {
+      return { success: false, error: json.message || "Registration failed" };
     }
-  };
+
+    const userData = mapUser(json.data.user);
+    persist({ ...userData, isPhoneVerified: false });
+    startRefreshCycle();
+
+    return { success: true };
+  } catch {
+    return { success: false, error: "Network error" };
+  }
+};
 
   /* ── Logout ── */
   const logout = useCallback(async () => {

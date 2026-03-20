@@ -168,14 +168,14 @@ export default function RegisterPage() {
       address: { line1, line2, city, pincode },
     }, saveLogin);
     setLoading(false);
-    if (res.success) {
-      if (saveLogin) {
-        localStorage.setItem('gk_saved_phone', phone.replace(/\D/g, ''));
-        localStorage.setItem('gk_saved_pw', password);
-      }
-      router.push('/');
-      return;
-    }
+   if (res.success) {
+  if (saveLogin) {
+    localStorage.setItem('gk_saved_phone', phone.replace(/\D/g, ''));
+    localStorage.setItem('gk_saved_pw', password);
+  }
+  window.location.href = '/';
+  return;
+}
     const msg   = res.error || 'Something went wrong. Please try again.';
     const lower = msg.toLowerCase();
     if (lower.includes('phone') || lower.includes('already') || lower.includes('mobile')) {

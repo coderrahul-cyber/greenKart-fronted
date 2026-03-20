@@ -84,8 +84,8 @@ function LoginForm() {
         localStorage.removeItem(SAVED_PHONE_KEY);
         localStorage.removeItem(SAVED_PW_KEY);
       }
-      router.push(from);
-    } else {
+  const from = searchParams.get('from') || '/';
+  window.location.href = from;    } else {
       setError(res.error || 'Something went wrong');
     }
   };
