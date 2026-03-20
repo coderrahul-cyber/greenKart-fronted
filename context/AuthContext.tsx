@@ -74,27 +74,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const refreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => {
-  (async () => {
-    try {
-      const res = await fetch(`${API}/users/me`, {
-        credentials: "include"
-      });
+//   useEffect(() => {
+//   (async () => {
+//     try {
+//       const res = await fetch(`${API}/users/me`, {
+//         credentials: "include"
+//       });
 
-      const json = await res.json();
+//       const json = await res.json();
 
-      if (res.ok) {
-        setUser(json.data.user);
-      } else {
-        setUser(null);
-      }
-    } catch {
-      setUser(null);
-    } finally {
-      setIsLoading(false); // 🔥 important
-    }
-  })();
-}, []);
+//       if (res.ok) {
+//         setUser(json.data.user);
+//       } else {
+//         setUser(null);
+//       }
+//     } catch {
+//       setUser(null);
+//     } finally {
+//       setIsLoading(false); // 🔥 important
+//     }
+//   })();
+// }, []);
   /* ── Clear ── */
   const clearAll = useCallback(() => {
     setUser(null);
